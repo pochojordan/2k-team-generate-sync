@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2K SYNC - PRO RESPONSIVE</title>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap');
+        :root { --red: #ff0000; --glow: 0 0 10px rgba(255, 0, 0, 0.5); }
+        
+        body { 
+            margin: 0; font-family: 'Inter', sans-serif; background: #000; color: white; 
+            display: flex; justify-content: center; min-height: 100vh; padding: 20px; 
+            background: radial-gradient(circle at top, #1a0000 0%, #000 100%);
+            overflow-x: hidden;
+        }
+
+        .app { width: 100%; max-width: 1000px; position: relative; }
+        h1 { font-family: 'Orbitron'; color: var(--red); text-align: center; text-shadow: var(--glow); letter-spacing: 5px; margin-bottom: 25px; font-size: 2rem; }
+
+        /* DOBLE FOCO BLANCO */
+        .spotlight {
+            position: fixed; top: 0; width: 40%; height: 100%;
+            background: linear-gradient(to right, transparent, rgba(255,255,255,0.1), #fff, rgba(255,255,255,0.1), transparent);
+            z-index: 100; pointer-events: none; opacity: 0; filter: blur(20px);
+        }
+        #foco-L { left: -50%; transform: skewX(-20deg); }
+        #foco-R { right: -50%; transform: skewX(20deg); }
+
+        .anim-L { animation: sweepL 1.2s ease-in-out; }
+        .anim-R { animation: sweepR 1.2s ease-in-out; }
+
+        @keyframes sweepL { 0% { left: -50%; opacity: 0; } 50% { opacity: 0.6; } 100% { left: 120%; opacity: 0; } }
+        @keyframes sweepR { 0% { right: -50%; opacity: 0; } 50% { opacity: 0.6; } 100% { right: 120%; opacity: 0; } }
+
+        /* LAYOUT RESPONSIVE */
+        .main-layout { display: grid; gap: 20px; grid-template-columns: 1fr; }
+        @media (min-width: 800px) { .main-layout { grid-template-columns: 350px 1fr; } }
+
+        .panel { background: rgba(10, 10, 10, 0.95); border: 1px solid rgba(255,0,0,0.2); border-radius: 12px; padding: 20px; box-shadow: 0 0 30px rgba(0,0,0,0.9); }
+
+        /* GRID Y CHIPS */
+        .grid { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)) !important; gap: 8px !important; margin-bottom: 15px; }
+        .chip { background: #111; border: 1px solid #222; padding: 12px 2px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; color: #555; text-align: center; cursor: pointer; transition: 0.2s; }
+        .chip.active { border-color: var(--red); color: white; box-shadow: var(--glow); background: rgba(255,0,0,0.1); }
+        .chip:hover { border-color: #444; }
+
+        /* POSICIONES */
+        .row { display: flex !important; align-items: center; justify-content: space-between; background: #080808; padding: 10px 15px; border-radius: 8px; border: 1px solid #1a1a1a; margin-bottom: 10px; }
+        .p-name { font-weight: 700; font-size: 0.8rem; min-width: 90px; color: #ccc; text-transform: uppercase; }
+        .btns { display: flex; gap: 6px; }
+        .box { width: 36px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 0.65rem; font-weight: 800; border-radius: 4px; background: #1a1a1a; border: 1px solid #333; color: #444; cursor: pointer; }
+        .box.on { background: var(--red); color: white; border-color: var(--red); box-shadow: 0 0 8px rgba(255,0,0,0.4); }
+
+        /* UI ELEMENTS */
+        .input-group { display: flex; gap: 8px; margin-bottom: 15px; }
+        input { flex: 1; padding: 12px; background: #000; border: 1px solid #333; color: white; border-radius: 8px; outline: none; transition: 0.3s; }
+        input:focus { border-color: var(--red); }
+        
+        button { background: var(--red); color: white; border: none; padding: 14px; border-radius: 8px; font-family: 'Orbitron'; font-weight: 900; cursor: pointer; text-transform: uppercase; transition: 0.2s; }
+        button:hover { filter: brightness(1.2); transform: translateY(-1px); }
+        .btn-full { width: 100%; margin-top: 10px; }
+        .btn-reset { background: transparent; color: #444; border: 1px solid #222; width: 100%; margin-top: 12px; font-size: 0.7rem; }
+
+        .result { margin-top: 20px; padding: 20px; border-radius: 12px; border: 2px solid var(--red); background: rgba(255,0,0,0.08); animation: zoomOnce 0.4s ease-out; }
+        @keyframes zoomOnce { from { transform: scale(0.95); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        
+        .res-line { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,0,0,0.1); }
+        .res-pos { color: var(--red); font-family: 'Orbitron'; font-size: 0.8rem; }
+        .res-val { font-weight: 700; font-size: 1.1rem; }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div class="spotlight" id="foco-L"></div>
+<div class="spotlight" id="foco-R"></div>
+
+<div class="app">
+    <h1>2K SYNC</h1>
+    
+    <div id="view-init" class="panel" style="max-width: 400px; margin: 0 auto;">
+        <button class="btn-full" onclick="startHost()">CREAR SALA DE SORTEO</button>
+        <div class="input-group" style="margin-top: 20px;">
+            <input type="text" id="roomIdInput" placeholder="ID DE SALA...">
+            <button onclick="joinRoom()" style="background: #222; padding:0 20px;">UNIRSE</button>
+        </div>
+    </div>
+
+    <div id="view-main" class="hidden">
+        <div class="main-layout">
+            
+            <div class="panel">
+                <div id="host-controls" class="hidden">
+                    <div id="share-card" style="background:#0a0a0a; border:1px solid var(--red); border-radius:8px; padding:10px; text-align:center; cursor:pointer; margin-bottom:15px;" onclick="copyId()">
+                        <span style="font-size:0.6rem; color:#666; display:block; margin-bottom:4px;">ID DE SALA (CLICK PARA COPIAR)</span>
+                        <div id="room-id-val" style="font-family:'Orbitron'; font-size:1rem; color:#fff;">-------</div>
+                    </div>
+                    <div class="input-group">
+                        <input type="text" id="newPlayerName" placeholder="Añadir jugador...">
+                        <button onclick="addNewPlayer()" style="font-size:0.65rem; padding:0 15px;">ADD</button>
+                    </div>
+                </div>
+
+                <div class="grid" id="players-grid">
+                    <div class="chip" id="c-Airam" onclick="togP('Airam')">AIRAM</div>
+                    <div class="chip" id="c-Pocho" onclick="togP('Pocho')">POCHO</div>
+                    <div class="chip" id="c-Isra" onclick="togP('Isra')">ISRA</div>
+                    <div class="chip" id="c-Messi" onclick="togP('Messi')">MESSI</div>
+                    <div class="chip" id="c-Triodo" onclick="togP('Triodo')">TRIODO</div>
+                    <div class="chip" id="c-Salva" onclick="togP('Salva')">SALVA</div>
+                    <div class="chip" id="c-Eu" onclick="togP('Eu')">EU</div>
+                    <div class="chip" id="c-Fer" onclick="togP('Fer')">FER</div>
+                </div>
+
+                <div id="host-actions" class="hidden">
+                    <button class="btn-full" onclick="preRoll()">GENERAR QUINTETO</button>
+                    <button class="btn-reset" onclick="resetAll()">REINICIAR SELECCIÓN</button>
+                </div>
+                
+                <button id="guest-back" class="btn-reset hidden" onclick="location.reload()">← ABANDONAR SALA</button>
+            </div>
+
+            <div class="panel" id="sync-area">
+                <h2 id="live-label" style="font-family:'Orbitron'; font-size:0.8rem; color:#444; margin-top:0; border-bottom:1px solid #1a1a1a; padding-bottom:10px; text-align:center;">CONFIGURACIÓN EN VIVO</h2>
+                <div id="config-list"></div>
+                <div id="final-result"></div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    let peer, conn, sel = {}, isHost = false, lastHtml = "";
+    const POS_LABELS = ["PG", "SG", "LK", "PF", "C"];
+
+    window.onload = () => {
+        const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
+        saved.forEach(name => createPlayerChip(name));
+    };
+
+    window.startHost = () => {
+        isHost = true;
+        peer = new Peer();
+        peer.on('open', id => {
+            document.getElementById('room-id-val').innerText = id;
+            document.getElementById('host-controls').classList.remove('hidden');
+            document.getElementById('host-actions').classList.remove('hidden');
+            showMain();
+        });
+        peer.on('connection', c => {
+            conn = c;
+            setInterval(() => { 
+                if(conn.open) {
+                    const currentHtml = document.getElementById('sync-area').innerHTML;
+                    const currentChips = document.getElementById('players-grid').innerHTML;
+                    const fullData = currentHtml + "" + currentChips;
+                    
+                    if(fullData !== lastHtml || window.triggerEffect) {
+                        conn.send({ html: currentHtml, chips: currentChips, effect: window.triggerEffect });
+                        lastHtml = fullData;
+                        window.triggerEffect = false;
+                    }
+                }
+            }, 600);
+        });
+    };
+
+    window.joinRoom = () => {
+        const id = document.getElementById('roomIdInput').value.trim();
+        if(!id) return;
+        peer = new Peer();
+        peer.on('open', () => {
+            conn = peer.connect(id);
+            showMain();
+            document.getElementById('guest-back').classList.remove('hidden');
+            document.getElementById('live-label').innerText = "VISTA DEL INVITADO (ESPERANDO...)";
+            conn.on('data', d => { 
+                if (document.getElementById('sync-area').innerHTML !== d.html) {
+                    document.getElementById('sync-area').innerHTML = d.html; 
+                }
+                if (document.getElementById('players-grid').innerHTML !== d.chips) {
+                    document.getElementById('players-grid').innerHTML = d.chips;
+                }
+                if(d.effect) playSpotlight();
+            });
+        });
+    };
+
+    function showMain() {
+        document.getElementById('view-init').classList.add('hidden');
+        document.getElementById('view-main').classList.remove('hidden');
+    }
+
+    function playSpotlight() {
+        const fl = document.getElementById('foco-L');
+        const fr = document.getElementById('foco-R');
+        [fl, fr].forEach(f => {
+            f.classList.remove('anim-L', 'anim-R');
+            void f.offsetWidth;
+        });
+        fl.classList.add('anim-L');
+        fr.classList.add('anim-R');
+    }
+
+    window.preRoll = () => {
+        if (Object.keys(sel).length !== 5) return alert("Selecciona 5 jugadores");
+        window.triggerEffect = true;
+        playSpotlight();
+        setTimeout(roll, 600);
+    };
+
+    window.addNewPlayer = () => {
+        const name = document.getElementById('newPlayerName').value.trim();
+        if(!name) return;
+        if(createPlayerChip(name)) {
+            const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
+            saved.push(name);
+            localStorage.setItem('extraPlayers', JSON.stringify(saved));
+        }
+        document.getElementById('newPlayerName').value = '';
+    };
+
+    function createPlayerChip(name) {
+        const safeId = 'c-' + name.replace(/\s+/g, '');
+        if(document.getElementById(safeId)) return false;
+        const grid = document.getElementById('players-grid');
+        const chip = document.createElement('div');
+        chip.className = 'chip'; chip.id = safeId; chip.innerText = name.toUpperCase();
+        chip.onclick = () => togP(name);
+        grid.appendChild(chip);
+        return true;
+    }
+
+    window.togP = (name) => {
+        if(!isHost) return;
+        const safeId = 'c-' + name.replace(/\s+/g, '');
+        const chip = document.getElementById(safeId);
+        if (sel[name]) {
+            delete sel[name];
+            chip.classList.remove('active');
+            const row = document.getElementById('r-' + safeId);
+            if(row) row.remove();
+        } else {
+            if (Object.keys(sel).length >= 5) return;
+            sel[name] = [0,1,2,3,4];
+            chip.classList.add('active');
+            const row = document.createElement('div');
+            row.className = 'row';
+            row.id = 'r-' + safeId;
+            let btns = POS_LABELS.map((p, i) => `<div class="box on" id="b-${safeId}-${i}" onclick="togPos('${name}',${i})">${p}</div>`).join('');
+            row.innerHTML = `<div class="p-name">${name.toUpperCase()}</div><div class="btns">${btns}</div>`;
+            document.getElementById('config-list').appendChild(row);
+        }
+        document.getElementById('final-result').innerHTML = ""; // Limpiar resultado previo al cambiar algo
+    };
+
+    window.togPos = (name, i) => {
+        if(!isHost) return;
+        const safeId = 'c-' + name.replace(/\s+/g, '');
+        const btn = document.getElementById(`b-${safeId}-${i}`);
+        if (sel[name].includes(i)) {
+            if (sel[name].length > 1) {
+                sel[name] = sel[name].filter(x => x !== i);
+                btn.classList.remove('on');
+            }
+        } else {
+            sel[name].push(i);
+            btn.classList.add('on');
+        }
+    };
+
+    window.roll = () => {
+        const names = Object.keys(sel);
+        let res = new Array(5).fill(null);
+        let players = names.map(n => ({n, p: [...sel[n]]})).sort((a,b) => a.p.length - b.p.length);
+        for (let p of players) {
+            let options = p.p.sort(() => Math.random() - 0.5);
+            let found = false;
+            for (let pos of options) { if (!res[pos]) { res[pos] = p.n; found = true; break; } }
+            if (!found) { for (let i=0; i<5; i++) if(!res[i]) { res[i] = p.n; break; } }
+        }
+        let html = '<div class="result">';
+        POS_LABELS.forEach((l, i) => {
+            html += `<div class="res-line"><span class="res-pos">${l}</span><span class="res-val">${res[i].toUpperCase()}</span></div>`;
+        });
+        document.getElementById('final-result').innerHTML = html + '</div>';
+    };
+
+    window.resetAll = () => {
+        sel = {};
+        document.getElementById('config-list').innerHTML = '';
+        document.getElementById('final-result').innerHTML = '';
+        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+    };
+
+    window.copyId = () => {
+        navigator.clipboard.writeText(document.getElementById('room-id-val').innerText);
+        alert("ID de sala copiado al portapapeles");
+    };
+</script>
+</body>
+</html>
