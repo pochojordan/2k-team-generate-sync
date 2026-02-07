@@ -78,7 +78,7 @@
 <div class="spotlight" id="foco-R"></div>
 
 <div class="app">
-    <h1>2K SYNC</h1>
+    <h1 style="cursor:pointer;" onclick="sonidoMeme.play().catch(e=>alert('Error: '+e.message))">2K SYNC <span style="font-size:0.8rem; opacity:0.5;">🔊</span></h1>
     
     <div id="view-init" class="panel" style="max-width: 360px; margin: 0 auto;">
         <button class="btn-full" onclick="startHost()">CREAR SALA</button>
@@ -132,10 +132,26 @@
 <script>
     let peer, conn, sel = {}, isHost = false, lastHtml = "";
     const POS_LABELS = ["PG", "SG", "LK", "PF", "C"];
+    const sonidoMeme = new Audio('oh-my-god-meme.mp3');
 
     window.onload = () => {
         const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
         saved.forEach(name => createPlayerChip(name));
+        
+        // Cargar audio y preparar error
+        sonidoMeme.load();
+        sonidoMeme.onerror = () => alert("Error: No se pudo cargar 'oh-my-god-meme.mp3'. Asegúrate de que el archivo existe en la carpeta.");
+        
+        // Intentar desbloquear en el primer clic global
+        const unlock = () => {
+            sonidoMeme.play().then(() => {
+                sonidoMeme.pause();
+                sonidoMeme.currentTime = 0;
+                console.log("Audio desbloqueado");
+            }).catch(e => console.log("Audio bloqueado aún"));
+            document.removeEventListener('click', unlock);
+        };
+        document.addEventListener('click', unlock);
     };
 
     window.startHost = () => {
@@ -181,6 +197,14 @@
                 if(d.effect) {
                     scrollToTarget();
                     setTimeout(playSpotlight, 100); 
+                    // Play sound for guest
+                    sonidoMeme.currentTime = 0;
+                    sonidoMeme.volume = 1.0;
+                    sonidoMeme.play().catch(e => {
+                        console.log("Audio guest blocked", e);
+                        // Si falla, intentamos que el usuario haga clic para oírlo
+                        document.body.onclick = () => { sonidoMeme.play(); document.body.onclick = null; };
+                    });
                 }
             });
         });
@@ -260,8 +284,6 @@
         } else { sel[name].push(i); btn.classList.add('on'); }
     };
 
-    const sonidoMeme = new Audio('oh-my-god-meme.mp3');
-
     window.roll = () => {
     const names = Object.keys(sel);
     let res = new Array(5).fill(null);
@@ -275,9 +297,16 @@
     }
 
     // --- EFECTO DE SONIDO ---
-    // Reiniciamos el audio por si se le da a generar varias veces rápido
     sonidoMeme.currentTime = 0; 
-    sonidoMeme.play().catch(e => console.log("Audio esperando interacción del usuario"));
+    sonidoMeme.volume = 1.0;
+    const playPromise = sonidoMeme.play();
+    if (playPromise !== undefined) {
+        playPromise.catch(e => {
+            console.log("Error de reproducción:", e);
+            // Intentar una última vez si hubo interacción
+            setTimeout(() => { sonidoMeme.play().catch(()=>{}); }, 50);
+        });
+    }
     // ------------------------
 
     let html = '<div class="result">';
