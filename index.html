@@ -70,20 +70,39 @@
         .res-pos { color: var(--red); font-family: 'Orbitron'; font-size: 0.7rem; }
         .res-val { font-weight: 700; font-size: 0.95rem; }
         .hidden { display: none !important; }
+
+        /* TOAST NOTIFICATIONS */
+        #toast-container { position: fixed; top: 20px; right: 20px; z-index: 1000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { 
+            background: rgba(10, 10, 10, 0.9); border-left: 4px solid var(--red); color: white; 
+            padding: 15px 25px; border-radius: 8px; font-family: 'Inter', sans-serif; font-size: 0.8rem;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5); backdrop-filter: blur(10px);
+            opacity: 0; transform: translateX(50px); animation: toastIn 0.3s ease forwards;
+            pointer-events: auto; min-width: 250px; display: flex; align-items: center; justify-content: space-between;
+        }
+        @keyframes toastIn { to { opacity: 1; transform: translateX(0); } }
+        .toast.out { animation: toastOut 0.3s ease forwards; }
+        @keyframes toastOut { to { opacity: 0; transform: translateX(50px); } }
+        .toast-close { cursor: pointer; color: #555; font-size: 1.2rem; margin-left: 15px; }
+        .toast-close:hover { color: var(--red); }
     </style>
 </head>
 <body>
 
 <div class="spotlight" id="foco-L"></div>
 <div class="spotlight" id="foco-R"></div>
+<div id="toast-container"></div>
 
 <div class="app">
     <h1>2K SYNC</h1>
     <div id="view-init" class="panel" style="max-width: 360px; margin: 0 auto;">
         <button class="btn-full" onclick="startHost()">CREAR SALA</button>
-        <div class="input-group" style="margin-top: 15px;">
-            <input type="text" id="roomIdInput" placeholder="ID SALA...">
-            <button onclick="joinRoom()" style="background: #222;">UNIRSE</button>
+        <div style="margin-top: 15px; border-top: 1px solid #222; padding-top: 15px;">
+            <input type="text" id="guestNameInput" placeholder="Tu nombre..." style="margin-bottom: 5px; width: 100%;">
+            <div class="input-group">
+                <input type="text" id="roomIdInput" placeholder="ID SALA...">
+                <button onclick="joinRoom()" style="background: #222;">UNIRSE</button>
+            </div>
         </div>
     </div>
 
@@ -120,7 +139,7 @@
             <div class="panel" id="sync-area">
                 <h2 style="font-family:'Orbitron'; font-size:0.6rem; color:#333; margin:0 0 10px 0; border-bottom:1px solid #111; padding-bottom:5px; display:flex; justify-content:space-between;">
                     SALA DE SORTEO
-                    <span id="conn-status" style="color: #444;">DISPONIBLE</span>
+                    <span id="conn-status" style="color: #444; font-size: 0.5rem; text-align: right;">DISPONIBLE</span>
                 </h2>
                 <div id="config-list"></div>
                 <div id="final-result">
@@ -142,7 +161,7 @@
         
         // Cargar audio y preparar error
         sonidoMeme.load();
-        sonidoMeme.onerror = () => alert("Error: No se pudo cargar 'oh-my-god-meme.mp3'. Asegúrate de que el archivo existe en la carpeta.");
+        sonidoMeme.onerror = () => showToast("Error: No se pudo cargar el sonido.", "error");
         
         // Intentar desbloquear en el primer clic global
         const unlock = () => {
@@ -156,20 +175,48 @@
         document.addEventListener('click', unlock);
     };
 
+    function showToast(msg, type = 'info') {
+        const container = document.getElementById('toast-container');
+        const t = document.createElement('div');
+        t.className = 'toast';
+        t.innerHTML = `<span>${msg}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span>`;
+        if(type === 'error') t.style.borderLeftColor = '#ff4444';
+        container.appendChild(t);
+        setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 4000);
+    }
+
+    const PEER_CONFIG = {
+        config: {
+            'iceServers': [
+                { url: 'stun:stun.l.google.com:19302' },
+                { url: 'stun:stun1.l.google.com:19302' },
+                { url: 'stun:stun2.l.google.com:19302' },
+            ]
+        }
+    };
+
     window.startHost = () => {
         isHost = true;
-        peer = new Peer();
+        peer = new Peer(PEER_CONFIG);
         peer.on('open', id => {
             document.getElementById('room-id-val').innerText = id;
             document.getElementById('host-controls').classList.remove('hidden');
             document.getElementById('host-actions').classList.remove('hidden');
             showMain();
         });
+        peer.on('error', err => {
+            console.error('Peer error:', err);
+            showToast("Error en la sala: " + err.type, "error");
+        });
         peer.on('connection', c => {
             console.log("Nueva conexión entrante");
+            c.on('data', d => {
+                if (d.type === 'HELO') {
+                    c.metadata = { name: d.name };
+                    updateConnStatus();
+                }
+            });
             conns.push(c);
-            const status = document.getElementById('conn-status');
-            if(status) { status.innerText = `CONECTADOS: ${conns.length}`; status.style.color = 'var(--red)'; }
         });
 
         // Loop de sincronización único para todos los clientes
@@ -188,8 +235,7 @@
                         }
                         return false;
                     });
-                    const status = document.getElementById('conn-status');
-                    if(status) { status.innerText = conns.length > 0 ? `CONECTADOS: ${conns.length}` : 'VACIÓ'; }
+                    if(changed) updateConnStatus();
                     lastHtml = currentHtml + currentChips;
                     window.triggerEffect = false;
                 }
@@ -197,10 +243,28 @@
         }, 800);
     };
 
+    function updateConnStatus() {
+        const status = document.getElementById('conn-status');
+        if(!status) return;
+        const names = conns.filter(c => c.open && c.metadata).map(c => c.metadata.name);
+        const label = names.length > 0 ? `ONLINE: ${names.join(', ')}` : (conns.length > 0 ? `CONECTANDO...` : 'VACIÓ');
+        
+        status.innerText = label;
+        status.style.color = names.length > 0 ? 'var(--red)' : '#444';
+
+        // Enviar lista de nombres a todos los invitados
+        conns.forEach(c => {
+            if (c.open) c.send({ type: 'NAMES', list: names });
+        });
+    }
+
     window.joinRoom = () => {
         const id = document.getElementById('roomIdInput').value.trim();
-        if(!id) return;
-        peer = new Peer();
+        const name = document.getElementById('guestNameInput').value.trim();
+        
+        if(!name) return showToast("Por favor, introduce tu nombre.");
+        if(!id) return showToast("Introduce el ID de la sala.");
+        peer = new Peer(PEER_CONFIG);
         peer.on('open', () => {
             const conn = peer.connect(id, { reliable: true });
             showMain();
@@ -208,10 +272,19 @@
             
             conn.on('open', () => {
                 console.log("Conectado al host");
+                conn.send({ type: 'HELO', name: name }); // Enviar nombre al host
                 const status = document.getElementById('conn-status');
-                if(status) { status.innerText = 'CONECTADO'; status.style.color = 'var(--red)'; }
+                if(status) { status.innerText = `CONECTADO COMO: ${name.toUpperCase()}`; status.style.color = 'var(--red)'; }
             });
             conn.on('data', d => { 
+                if (d.type === 'NAMES') {
+                    const status = document.getElementById('conn-status');
+                    if(status) { 
+                        status.innerText = `ONLINE: ${d.list.join(', ')}`; 
+                        status.style.color = 'var(--red)'; 
+                    }
+                    return;
+                }
                 if (document.getElementById('sync-area').innerHTML !== d.html) {
                     document.getElementById('sync-area').innerHTML = d.html;
                 }
@@ -231,10 +304,18 @@
                 }
             });
             conn.on('close', () => {
-                alert("La conexión con la sala se ha cerrado.");
-                location.reload();
+                showToast("La conexión se ha cerrado.");
+                setTimeout(() => location.reload(), 1500);
             });
-            conn.on('error', (err) => alert("Error de conexión: " + err.type));
+            conn.on('error', (err) => {
+                console.error('Conn error:', err);
+                showToast("Error de conexión: " + err.type, "error");
+            });
+        });
+        peer.on('error', err => {
+            console.error('Peer error:', err);
+            if(err.type === 'peer-unavailable') showToast("No se pudo encontrar la sala.", "error");
+            else showToast("Error de red: " + err.type, "error");
         });
     };
 
@@ -256,7 +337,7 @@
     }
 
     window.preRoll = () => {
-        if (Object.keys(sel).length !== 5) return alert("Selecciona 5");
+        if (Object.keys(sel).length !== 5) return showToast("¡Selecciona 5 jugadores!");
         scrollToTarget();
         window.triggerEffect = true;
         setTimeout(() => {
@@ -354,7 +435,10 @@
         document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
     };
 
-    window.copyId = () => { navigator.clipboard.writeText(document.getElementById('room-id-val').innerText); alert("ID Copiado"); };
+    window.copyId = () => { 
+        navigator.clipboard.writeText(document.getElementById('room-id-val').innerText); 
+        showToast("ID de sala copiado"); 
+    };
 </script>
 </body>
 </html>
