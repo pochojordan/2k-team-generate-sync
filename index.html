@@ -260,29 +260,36 @@
         } else { sel[name].push(i); btn.classList.add('on'); }
     };
 
-    window.roll = () => {
-        const names = Object.keys(sel);
-        let res = new Array(5).fill(null);
-        let players = names.map(n => ({n, p: [...sel[n]]})).sort((a,b) => a.p.length - b.p.length);
-        
-        for (let p of players) {
-            let options = p.p.sort(() => Math.random() - 0.5);
-            let found = false;
-            for (let pos of options) { if (!res[pos]) { res[pos] = p.n; found = true; break; } }
-            if (!found) { for (let i=0; i<5; i++) if(!res[i]) { res[i] = p.n; break; } }
-        }
+    const sonidoMeme = new Audio('oh-my-god-meme.mp3');
 
-        // Generamos el HTML con delays de animación inline
-        let html = '<div class="result">';
-        POS_LABELS.forEach((l, i) => {
-            const delay = i * 0.3; // 0.3 segundos entre cada jugador
-            html += `<div class="res-line" style="animation-delay: ${delay}s">
-                        <span class="res-pos">${l}</span>
-                        <span class="res-val">${res[i].toUpperCase()}</span>
-                     </div>`;
-        });
-        document.getElementById('final-result').innerHTML = html + '</div>';
-    };
+    window.roll = () => {
+    const names = Object.keys(sel);
+    let res = new Array(5).fill(null);
+    let players = names.map(n => ({n, p: [...sel[n]]})).sort((a,b) => a.p.length - b.p.length);
+    
+    for (let p of players) {
+        let options = p.p.sort(() => Math.random() - 0.5);
+        let found = false;
+        for (let pos of options) { if (!res[pos]) { res[pos] = p.n; found = true; break; } }
+        if (!found) { for (let i=0; i<5; i++) if(!res[i]) { res[i] = p.n; break; } }
+    }
+
+    // --- EFECTO DE SONIDO ---
+    // Reiniciamos el audio por si se le da a generar varias veces rápido
+    sonidoMeme.currentTime = 0; 
+    sonidoMeme.play().catch(e => console.log("Audio esperando interacción del usuario"));
+    // ------------------------
+
+    let html = '<div class="result">';
+    POS_LABELS.forEach((l, i) => {
+        const delay = i * 0.3; 
+        html += `<div class="res-line" style="animation-delay: ${delay}s">
+                    <span class="res-pos">${l}</span>
+                    <span class="res-val">${res[i].toUpperCase()}</span>
+                 </div>`;
+    });
+    document.getElementById('final-result').innerHTML = html + '</div>';
+};
 
     window.resetAll = () => {
         sel = {}; document.getElementById('config-list').innerHTML = '';
