@@ -266,24 +266,45 @@
         });
     }
 
+    let retryCount = 0;
+    const MAX_RETRIES = 5;
+
     window.joinRoom = () => {
         const id = document.getElementById('roomIdInput').value.trim();
         const name = document.getElementById('guestNameInput').value.trim();
         
         if(!name) return showToast("Por favor, introduce tu nombre.");
         if(!id) return showToast("Introduce el ID de la sala.");
+        
+        retryCount = 0;
+        attemptConnection(id, name);
+    };
+
+    function attemptConnection(id, name) {
+        if(peer) peer.destroy();
         peer = new Peer(PEER_CONFIG);
+
         peer.on('open', () => {
             const conn = peer.connect(id, { reliable: true });
             showMain();
             document.getElementById('guest-back').classList.remove('hidden');
             
+            const connTimeout = setTimeout(() => {
+                if(!conn.open) {
+                    console.log("Timeout de conexión, reintentando...");
+                    handleRetry(id, name);
+                }
+            }, 5000);
+
             conn.on('open', () => {
+                clearTimeout(connTimeout);
+                retryCount = 0;
                 console.log("Conectado al host");
-                conn.send({ type: 'HELO', name: name }); // Enviar nombre al host
+                conn.send({ type: 'HELO', name: name });
                 const status = document.getElementById('conn-status');
                 if(status) { status.innerText = `CONECTADO COMO: ${name.toUpperCase()}`; status.style.color = 'var(--red)'; }
             });
+
             conn.on('data', d => { 
                 if (d.type === 'NAMES') {
                     const status = document.getElementById('conn-status');
@@ -302,30 +323,47 @@
                 if(d.effect) {
                     scrollToTarget();
                     setTimeout(playSpotlight, 100); 
-                    // Play sound for guest
                     sonidoMeme.currentTime = 0;
                     sonidoMeme.volume = 1.0;
                     sonidoMeme.play().catch(e => {
-                        console.log("Audio guest blocked", e);
                         document.body.onclick = () => { sonidoMeme.play(); document.body.onclick = null; };
                     });
                 }
             });
+
             conn.on('close', () => {
-                showToast("La conexión se ha cerrado.");
-                setTimeout(() => location.reload(), 1500);
+                console.log("Conexión perdida, intentando reconectar...");
+                handleRetry(id, name);
             });
+
             conn.on('error', (err) => {
                 console.error('Conn error:', err);
-                showToast("Error de conexión: " + err.type, "error");
+                handleRetry(id, name);
             });
         });
+
         peer.on('error', err => {
             console.error('Peer error:', err);
-            if(err.type === 'peer-unavailable') showToast("No se pudo encontrar la sala.", "error");
-            else showToast("Error de red: " + err.type, "error");
+            if(err.type === 'peer-unavailable') {
+                showToast("Sala no encontrada. Revisa el ID.", "error");
+            } else {
+                handleRetry(id, name);
+            }
         });
-    };
+    }
+
+    function handleRetry(id, name) {
+        if (retryCount < MAX_RETRIES) {
+            retryCount++;
+            const status = document.getElementById('conn-status');
+            if(status) status.innerText = `RECONECTANDO (${retryCount}/${MAX_RETRIES})...`;
+            setTimeout(() => attemptConnection(id, name), 2000);
+        } else {
+            showToast("No se pudo conectar tras varios intentos.", "error");
+            const status = document.getElementById('conn-status');
+            if(status) status.innerText = `ERROR DE CONEXIÓN`;
+        }
+    }
 
     function showMain() {
         document.getElementById('view-init').classList.add('hidden');
@@ -345,6 +383,7 @@
     }
 
     window.preRoll = () => {
+        if(!isHost) return;
         if (Object.keys(sel).length !== 5) return showToast("¡Selecciona 5 jugadores!");
         scrollToTarget();
         window.triggerEffect = true;
@@ -355,6 +394,7 @@
     };
 
     window.addNewPlayer = () => {
+        if(!isHost) return;
         const name = document.getElementById('newPlayerName').value.trim();
         if(!name || !createPlayerChip(name)) return;
         const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
@@ -438,6 +478,7 @@
 };
 
     window.resetAll = () => {
+        if(!isHost) return;
         sel = {}; document.getElementById('config-list').innerHTML = '';
         document.getElementById('final-result').innerHTML = '<div class="skeleton">ESPERANDO SORTEO...</div>';
         document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
