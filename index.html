@@ -234,11 +234,13 @@
                 if(currentHtml + currentChips !== lastHtml || window.triggerEffect) {
                     const data = { html: currentHtml, chips: currentChips, effect: window.triggerEffect };
                     // Enviar a todos y limpiar desconectados
+                    let changed = false;
                     conns = conns.filter(c => {
                         if (c.open) {
                             c.send(data);
                             return true;
                         }
+                        changed = true;
                         return false;
                     });
                     if(changed) updateConnStatus();
