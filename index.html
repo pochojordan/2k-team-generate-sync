@@ -118,7 +118,10 @@
             </div>
 
             <div class="panel" id="sync-area">
-                <h2 style="font-family:'Orbitron'; font-size:0.6rem; color:#333; margin:0 0 10px 0; border-bottom:1px solid #111; padding-bottom:5px;">SALA DE SORTEO</h2>
+                <h2 style="font-family:'Orbitron'; font-size:0.6rem; color:#333; margin:0 0 10px 0; border-bottom:1px solid #111; padding-bottom:5px; display:flex; justify-content:space-between;">
+                    SALA DE SORTEO
+                    <span id="conn-status" style="color: #444;">DISPONIBLE</span>
+                </h2>
                 <div id="config-list"></div>
                 <div id="final-result">
                     <div class="skeleton">ESPERANDO SORTEO...</div>
@@ -129,7 +132,7 @@
 </div>
 
 <script>
-    let peer, conn, sel = {}, isHost = false, lastHtml = "";
+    let peer, conns = [], sel = {}, isHost = false, lastHtml = "";
     const POS_LABELS = ["PG", "SG", "LK", "PF", "C"];
     const sonidoMeme = new Audio('oh-my-god-meme.mp3');
 
@@ -163,19 +166,35 @@
             showMain();
         });
         peer.on('connection', c => {
-            conn = c;
-            setInterval(() => { 
-                if(conn.open) {
-                    const currentHtml = document.getElementById('sync-area').innerHTML;
-                    const currentChips = document.getElementById('players-grid').innerHTML;
-                    if(currentHtml + currentChips !== lastHtml || window.triggerEffect) {
-                        conn.send({ html: currentHtml, chips: currentChips, effect: window.triggerEffect });
-                        lastHtml = currentHtml + currentChips;
-                        window.triggerEffect = false;
-                    }
-                }
-            }, 600);
+            console.log("Nueva conexión entrante");
+            conns.push(c);
+            const status = document.getElementById('conn-status');
+            if(status) { status.innerText = `CONECTADOS: ${conns.length}`; status.style.color = 'var(--red)'; }
         });
+
+        // Loop de sincronización único para todos los clientes
+        setInterval(() => {
+            if (conns.length > 0) {
+                const currentHtml = document.getElementById('sync-area').innerHTML;
+                const currentChips = document.getElementById('players-grid').innerHTML;
+                
+                if(currentHtml + currentChips !== lastHtml || window.triggerEffect) {
+                    const data = { html: currentHtml, chips: currentChips, effect: window.triggerEffect };
+                    // Enviar a todos y limpiar desconectados
+                    conns = conns.filter(c => {
+                        if (c.open) {
+                            c.send(data);
+                            return true;
+                        }
+                        return false;
+                    });
+                    const status = document.getElementById('conn-status');
+                    if(status) { status.innerText = conns.length > 0 ? `CONECTADOS: ${conns.length}` : 'VACIÓ'; }
+                    lastHtml = currentHtml + currentChips;
+                    window.triggerEffect = false;
+                }
+            }
+        }, 800);
     };
 
     window.joinRoom = () => {
@@ -183,9 +202,15 @@
         if(!id) return;
         peer = new Peer();
         peer.on('open', () => {
-            conn = peer.connect(id);
+            const conn = peer.connect(id, { reliable: true });
             showMain();
             document.getElementById('guest-back').classList.remove('hidden');
+            
+            conn.on('open', () => {
+                console.log("Conectado al host");
+                const status = document.getElementById('conn-status');
+                if(status) { status.innerText = 'CONECTADO'; status.style.color = 'var(--red)'; }
+            });
             conn.on('data', d => { 
                 if (document.getElementById('sync-area').innerHTML !== d.html) {
                     document.getElementById('sync-area').innerHTML = d.html;
@@ -201,11 +226,15 @@
                     sonidoMeme.volume = 1.0;
                     sonidoMeme.play().catch(e => {
                         console.log("Audio guest blocked", e);
-                        // Si falla, intentamos que el usuario haga clic para oírlo
                         document.body.onclick = () => { sonidoMeme.play(); document.body.onclick = null; };
                     });
                 }
             });
+            conn.on('close', () => {
+                alert("La conexión con la sala se ha cerrado.");
+                location.reload();
+            });
+            conn.on('error', (err) => alert("Error de conexión: " + err.type));
         });
     };
 
