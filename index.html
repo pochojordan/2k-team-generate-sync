@@ -422,10 +422,18 @@
             const row = document.getElementById('r-' + safeId); if(row) row.remove();
         } else {
             if (Object.keys(sel).length >= 5) return;
-            sel[name] = [0,1,2,3,4]; chip.classList.add('active');
+            // Cargar preferencias guardadas o todas por defecto
+            const prefs = JSON.parse(localStorage.getItem('posPrefs') || '{}');
+            const savedPos = prefs[name] || [0,1,2,3,4];
+            
+            sel[name] = savedPos; 
+            chip.classList.add('active');
             const row = document.createElement('div');
             row.className = 'row'; row.id = 'r-' + safeId;
-            let btns = POS_LABELS.map((p, i) => `<div class="box on" id="b-${safeId}-${i}" onclick="togPos('${name}',${i})">${p}</div>`).join('');
+            let btns = POS_LABELS.map((p, i) => {
+                const isOn = savedPos.includes(i) ? 'on' : '';
+                return `<div class="box ${isOn}" id="b-${safeId}-${i}" onclick="togPos('${name}',${i})">${p}</div>`;
+            }).join('');
             row.innerHTML = `<div class="p-name">${name.toUpperCase()}</div><div class="btns">${btns}</div>`;
             document.getElementById('config-list').appendChild(row);
         }
@@ -439,6 +447,11 @@
         if (sel[name].includes(i)) {
             if (sel[name].length > 1) { sel[name] = sel[name].filter(x => x !== i); btn.classList.remove('on'); }
         } else { sel[name].push(i); btn.classList.add('on'); }
+        
+        // Guardar preferencia en localStorage
+        const prefs = JSON.parse(localStorage.getItem('posPrefs') || '{}');
+        prefs[name] = sel[name];
+        localStorage.setItem('posPrefs', JSON.stringify(prefs));
     };
 
     window.roll = () => {
