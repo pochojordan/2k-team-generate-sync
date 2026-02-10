@@ -75,6 +75,9 @@
 
         .res-pos { color: var(--red); font-family: 'Orbitron'; font-size: 0.7rem; }
         .res-val { font-weight: 700; font-size: 0.95rem; }
+        .res-actions { margin-top: 15px; display: flex; gap: 8px; border-top: 1px solid rgba(255,0,0,0.1); padding-top: 12px; }
+        .btn-copy { background: #25D366; color: white; display: flex; align-items: center; justify-content: center; gap: 5px; flex: 1; font-size: 0.65rem; padding: 8px; }
+        .btn-copy:hover { background: #128C7E; transform: translateY(-1px); box-shadow: 0 0 10px rgba(37, 211, 102, 0.4); }
         .hidden { display: none !important; }
 
         /* TOAST NOTIFICATIONS */
@@ -480,15 +483,33 @@
     // ------------------------
 
     let html = '<div class="result">';
+    let textResult = "🏀 *QUINTETO 2K SYNC* 🏀\n\n";
     POS_LABELS.forEach((l, i) => {
         const delay = i * 0.3; 
         html += `<div class="res-line" style="animation-delay: ${delay}s">
                     <span class="res-pos">${l}</span>
                     <span class="res-val">${res[i].toUpperCase()}</span>
                  </div>`;
+        textResult += `*${l}:* ${res[i].toUpperCase()}\n`;
     });
-    document.getElementById('final-result').innerHTML = html + '</div>';
+    
+    // Guardar para copiar después
+    window.lastResultText = textResult;
+
+    const copyBtn = `<div class="res-actions">
+                        <button class="btn-copy" onclick="copyToWhatsApp()">
+                            COPIAR PARA WHATSAPP
+                        </button>
+                     </div>`;
+
+    document.getElementById('final-result').innerHTML = html + copyBtn + '</div>';
 };
+
+    window.copyToWhatsApp = () => {
+        if(!window.lastResultText) return;
+        navigator.clipboard.writeText(window.lastResultText);
+        showToast("¡Copiado para WhatsApp!");
+    };
 
     window.resetAll = () => {
         if(!isHost) return;
