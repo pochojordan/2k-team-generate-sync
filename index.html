@@ -168,6 +168,10 @@
         const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
         saved.forEach(name => createPlayerChip(name));
         
+        // Cargar nombre de invitado guardado
+        const savedName = localStorage.getItem('savedGuestName');
+        if(savedName) document.getElementById('guestNameInput').value = savedName;
+        
         // Cargar audio y preparar error
         sonidoMeme.load();
         sonidoMeme.onerror = () => showToast("Error: No se pudo cargar el sonido.", "error");
@@ -278,6 +282,9 @@
         
         if(!name) return showToast("Por favor, introduce tu nombre.");
         if(!id) return showToast("Introduce el ID de la sala.");
+        
+        // Guardar nombre para la próxima vez
+        localStorage.setItem('savedGuestName', name);
         
         retryCount = 0;
         attemptConnection(id, name);
