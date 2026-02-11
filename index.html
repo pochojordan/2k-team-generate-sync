@@ -35,13 +35,13 @@
         .panel { background: rgba(10, 10, 10, 0.95); border: 1px solid rgba(255,0,0,0.2); border-radius: 10px; padding: 12px; width: 100%; }
 
         .grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 4px !important; margin-bottom: 12px; }
-        .chip { background: #111; border: 1px solid #222; padding: 10px 2px; border-radius: 6px; font-size: 0.6rem; font-weight: 700; color: #555; text-align: center; cursor: pointer; }
+        .chip { background: #111; border: 1px solid #333; padding: 10px 2px; border-radius: 6px; font-size: 0.6rem; font-weight: 700; color: #999; text-align: center; cursor: pointer; }
         .chip.active { border-color: var(--red); color: white; box-shadow: var(--glow); background: rgba(255,0,0,0.1); }
 
         .row { display: flex !important; align-items: center; justify-content: space-between; background: #080808; padding: 6px 10px; border-radius: 8px; border: 1px solid #1a1a1a; margin-bottom: 6px; }
-        .p-name { font-weight: 700; font-size: 0.65rem; width: 60px; color: #ccc; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+        .p-name { font-weight: 700; font-size: 0.65rem; width: 60px; color: #eee; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
         .btns { display: flex; gap: 3px; }
-        .box { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 800; border-radius: 4px; background: #1a1a1a; border: 1px solid #333; color: #444; cursor: pointer; }
+        .box { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; font-weight: 800; border-radius: 4px; background: #1a1a1a; border: 1px solid #444; color: #888; cursor: pointer; }
         .box.on { background: var(--red); color: white; border-color: var(--red); }
 
         .input-group { display: flex; gap: 5px; margin-bottom: 10px; }
@@ -50,14 +50,14 @@
         button:hover { background: #ff3333; transform: translateY(-1px); box-shadow: var(--glow); }
         button:active { transform: translateY(0); }
 
-        .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid #444; color: #ccc; font-size: 0.65rem; }
+        .btn-secondary { background: rgba(255,255,255,0.05); border: 1px solid #555; color: #eee; font-size: 0.65rem; }
         .btn-secondary:hover { border-color: var(--red); color: white; background: rgba(255,0,0,0.1); }
         
         .btn-full { width: 100%; margin-top: 5px; }
         
         /* RESULTADO Y ANIMACIÓN INDIVIDUAL */
         #final-result { min-height: 180px; margin-top: 10px; }
-        .skeleton { border: 1px dashed #222; border-radius: 10px; height: 180px; display: flex; align-items: center; justify-content: center; color: #222; font-family: 'Orbitron'; font-size: 0.6rem; letter-spacing: 2px; }
+        .skeleton { border: 1px dashed #333; border-radius: 10px; height: 180px; display: flex; align-items: center; justify-content: center; color: #555; font-family: 'Orbitron'; font-size: 0.6rem; letter-spacing: 2px; }
         
         .result { padding: 12px; border-radius: 10px; border: 2px solid var(--red); background: rgba(255,0,0,0.1); width: 100%; }
         
@@ -120,7 +120,7 @@
             <div class="panel">
                 <div id="host-controls" class="hidden">
                     <div id="share-card" style="background:#0a0a0a; border:1px solid var(--red); border-radius:6px; padding:8px; text-align:center; cursor:pointer; margin-bottom:5px;" onclick="copyId()">
-                        <span style="font-size:0.55rem; color:#666; display:block; text-transform: uppercase;">ID SALA (COPIAR)</span>
+                        <span style="font-size:0.55rem; color:#aaa; display:block; text-transform: uppercase;">ID SALA (COPIAR)</span>
                         <div id="room-id-val" style="font-family:'Orbitron'; font-size:0.8rem;">-------</div>
                     </div>
                     <button class="btn-full btn-secondary" style="font-size: 0.6rem; padding: 6px; margin-bottom: 10px;" onclick="copyInviteLink()">
@@ -149,9 +149,9 @@
             </div>
 
             <div class="panel" id="sync-area">
-                <h2 style="font-family:'Orbitron'; font-size:0.6rem; color:#333; margin:0 0 10px 0; border-bottom:1px solid #111; padding-bottom:5px; display:flex; justify-content:space-between;">
+                <h2 style="font-family:'Orbitron'; font-size:0.6rem; color:#888; margin:0 0 10px 0; border-bottom:1px solid #111; padding-bottom:5px; display:flex; justify-content:space-between;">
                     SALA DE SORTEO
-                    <span id="conn-status" style="color: #444; font-size: 0.5rem; text-align: right;">DISPONIBLE</span>
+                    <span id="conn-status" style="color: #666; font-size: 0.5rem; text-align: right;">DISPONIBLE</span>
                 </h2>
                 <div id="config-list"></div>
                 <div id="final-result">
@@ -215,7 +215,19 @@
                 { url: 'stun:stun.l.google.com:19302' },
                 { url: 'stun:stun1.l.google.com:19302' },
                 { url: 'stun:stun2.l.google.com:19302' },
-            ]
+                { url: 'stun:stun3.l.google.com:19302' },
+                { url: 'stun:stun4.l.google.com:19302' },
+                { url: 'stun:stun.voipstunt.com' },
+                { url: 'stun:stun.ekiga.net' },
+                { url: 'stun:stun.ideasip.com' },
+                { url: 'stun:stun.schlund.de' },
+                { url: 'stun:stun.voiparound.com' },
+                { url: 'stun:stun.voipbuster.com' },
+                { url: 'stun:stun.sipgate.net:10000' },
+                { url: 'stun:stun.l.google.com:19305' }
+            ],
+            'iceCandidatePoolSize': 10, // Recolección más rápida/agresiva
+            'sdpSemantics': 'unified-plan'
         }
     };
 
@@ -385,6 +397,9 @@
                 console.error('Error en el objeto Peer:', err);
                 if(err.type === 'peer-unavailable') {
                     showToast("Sala no encontrada. Revisa el ID.", "error");
+                } else if(err.type === 'network') {
+                    showToast("Error de red: Tu operadora o firewall bloquea la conexión.", "error");
+                    handleRetry(id, name);
                 } else {
                     handleRetry(id, name);
                 }
