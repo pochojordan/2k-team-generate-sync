@@ -183,6 +183,25 @@
     const POS_LABELS = ["PG", "SG", "LK", "PF", "C"];
     const sonidoMeme = new Audio('oh-my-god-meme.mp3');
 
+    // Función de sincronización eficiente (solo se llama cuando algo cambia)
+    function syncHostData(effect = false) {
+        if(!isHost || !roomRef) return;
+        const currentGrid = document.getElementById('players-grid').innerHTML;
+        const currentSync = document.getElementById('sync-area').innerHTML;
+        const dataString = currentGrid + currentSync;
+
+        // Evitar escrituras redundantes
+        if (dataString !== lastData || effect) {
+            roomRef.child('hostData').set({
+                grid: currentGrid,
+                sync: currentSync,
+                effect: effect,
+                ts: Date.now()
+            });
+            lastData = dataString;
+        }
+    }
+
     window.onload = () => {
         const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
         saved.forEach(name => createPlayerChip(name));
@@ -222,34 +241,23 @@
             document.getElementById('host-actions').classList.remove('hidden');
             showMain();
             
-            // Auto-limpieza: Borrar la sala cuando el Host se desconecta
+            // Auto-limpieza al desconectar
             roomRef.onDisconnect().remove();
+
             roomRef.child('guests').on('value', snap => {
                 const guests = snap.val() || {};
                 const names = Object.values(guests).map(g => g.name);
                 updateConnStatus(names);
             });
-            setInterval(() => {
-                const currentGrid = document.getElementById('players-grid').innerHTML;
-                const currentSync = document.getElementById('sync-area').innerHTML;
-                const dataString = currentGrid + currentSync;
-                if(dataString !== lastData || window.triggerEffect) {
-                    roomRef.child('hostData').set({
-                        grid: currentGrid,
-                        sync: currentSync,
-                        effect: window.triggerEffect || false,
-                        ts: Date.now()
-                    });
-                    lastData = dataString;
-                    window.triggerEffect = false;
-                }
-            }, 800);
+
+            // Sincronización inicial
+            syncHostData();
         });
     };
 
-    // Intento de borrado inmediato al cerrar la pestaña
     window.onbeforeunload = () => {
         if(isHost && roomRef) roomRef.remove();
+        db.goOffline(); // Liberar recursos de Firebase inmediatamente
     };
 
     window.joinRoom = () => {
@@ -275,11 +283,14 @@
             roomRef.child('hostData').on('value', snap => {
                 const d = snap.val();
                 if(!d) return;
+                let changed = false;
                 if (document.getElementById('players-grid').innerHTML !== d.grid) {
                     document.getElementById('players-grid').innerHTML = d.grid;
+                    changed = true;
                 }
                 if (document.getElementById('sync-area').innerHTML !== d.sync) {
                     document.getElementById('sync-area').innerHTML = d.sync;
+                    changed = true;
                 }
                 if(d.effect) {
                     scrollToTarget();
@@ -320,7 +331,8 @@
         if(!isHost) return;
         if (Object.keys(sel).length !== 5) return showToast("¡Selecciona 5 jugadores!");
         scrollToTarget();
-        window.triggerEffect = true;
+        // Sincronizar con bandera de efecto true
+        syncHostData(true);
         setTimeout(() => { playSpotlight(); setTimeout(roll, 600); }, 200);
     };
 
@@ -332,6 +344,7 @@
         saved.push(name);
         localStorage.setItem('extraPlayers', JSON.stringify(saved));
         document.getElementById('newPlayerName').value = '';
+        syncHostData();
     };
 
     function createPlayerChip(name) {
@@ -367,6 +380,7 @@
             document.getElementById('config-list').appendChild(row);
         }
         document.getElementById('final-result').innerHTML = '<div class="skeleton">ESPERANDO SORTEO...</div>';
+        syncHostData();
     };
 
     window.togPos = (name, i) => {
@@ -380,7 +394,6 @@
         prefs[name] = sel[name];
         localStorage.setItem('posPrefs', JSON.stringify(prefs));
         
-        // Refrescar solo los botones de esa fila
         const safeId = 'c-' + name.replace(/\s+/g, '');
         const row = document.getElementById('r-' + safeId);
         if(row) {
@@ -389,6 +402,7 @@
                 return `<div class="box ${isOn}" onclick="togPos('${name}',${idx})">${p}</div>`;
             }).join('');
         }
+        syncHostData();
     };
 
     window.roll = () => {
@@ -402,6 +416,7 @@
             if (!found) { for (let i=0; i<5; i++) if(!res[i]) { res[i] = p.n; break; } }
         }
         showRes(res);
+        syncHostData();
     };
 
     function showRes(res) {
@@ -427,6 +442,7 @@
         sel = {}; document.getElementById('config-list').innerHTML = '';
         document.getElementById('final-result').innerHTML = '<div class="skeleton">ESPERANDO SORTEO...</div>';
         document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
+        syncHostData();
     };
 
     window.copyId = () => { 
