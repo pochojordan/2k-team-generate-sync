@@ -119,9 +119,14 @@
         <div class="main-layout">
             <div class="panel">
                 <div id="host-controls" class="hidden">
-                    <div id="share-card" style="background:#0a0a0a; border:1px solid var(--red); border-radius:6px; padding:8px; text-align:center; cursor:pointer; margin-bottom:10px;" onclick="copyId()">
-                        <span style="font-size:0.5rem; color:#666; display:block;">ID SALA (COPIAR)</span>
-                        <div id="room-id-val" style="font-family:'Orbitron'; font-size:0.8rem;">-------</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                        <div id="share-card" style="background:#0a0a0a; border:1px solid var(--red); border-radius:6px; padding:8px; text-align:center; cursor:pointer;" onclick="copyId()">
+                            <span style="font-size:0.55rem; color:#666; display:block; text-transform: uppercase;">ID (Copiar)</span>
+                            <div id="room-id-val" style="font-family:'Orbitron'; font-size:0.75rem;">-------</div>
+                        </div>
+                        <button class="btn-secondary" style="font-size: 0.55rem; padding: 0;" onclick="copyInviteLink()">
+                            COMPARTIR<br>ENLACE
+                        </button>
                     </div>
                     <div class="input-group">
                         <input type="text" id="newPlayerName" placeholder="Nombre...">
@@ -171,6 +176,14 @@
         // Cargar nombre de invitado guardado
         const savedName = localStorage.getItem('savedGuestName');
         if(savedName) document.getElementById('guestNameInput').value = savedName;
+
+        // Comprobar si viene por link de invitación
+        const urlParams = new URLSearchParams(window.location.search);
+        const inviteRoom = urlParams.get('room');
+        if(inviteRoom) {
+            document.getElementById('roomIdInput').value = inviteRoom;
+            showToast("Sala cargada desde enlace.");
+        }
         
         // Cargar audio y preparar error
         sonidoMeme.load();
@@ -229,28 +242,23 @@
                     updateConnStatus();
                 }
             });
+            c.on('close', () => { setTimeout(updateConnStatus, 500); });
+            c.on('error', () => { setTimeout(updateConnStatus, 500); });
             conns.push(c);
         });
 
         // Loop de sincronización único para todos los clientes
         setInterval(() => {
+            // Limpieza periódica de seguridad (cada 800ms) por si fallan los eventos
+            if(conns.some(c => !c.open)) updateConnStatus();
+
             if (conns.length > 0) {
                 const currentHtml = document.getElementById('sync-area').innerHTML;
                 const currentChips = document.getElementById('players-grid').innerHTML;
                 
                 if(currentHtml + currentChips !== lastHtml || window.triggerEffect) {
                     const data = { html: currentHtml, chips: currentChips, effect: window.triggerEffect };
-                    // Enviar a todos y limpiar desconectados
-                    let changed = false;
-                    conns = conns.filter(c => {
-                        if (c.open) {
-                            c.send(data);
-                            return true;
-                        }
-                        changed = true;
-                        return false;
-                    });
-                    if(changed) updateConnStatus();
+                    conns.forEach(c => { if(c.open) c.send(data); });
                     lastHtml = currentHtml + currentChips;
                     window.triggerEffect = false;
                 }
@@ -261,13 +269,18 @@
     function updateConnStatus() {
         const status = document.getElementById('conn-status');
         if(!status) return;
-        const names = conns.filter(c => c.open && c.metadata).map(c => c.metadata.name);
-        const label = names.length > 0 ? `ONLINE: ${names.join(', ')}` : (conns.length > 0 ? `CONECTANDO...` : 'VACIÓ');
+        
+        // 1. Limpiar la lista de conexiones cerradas/muertas
+        conns = conns.filter(c => c.open);
+        
+        // 2. Extraer nombres validos
+        const names = conns.filter(c => c.metadata && c.metadata.name).map(c => c.metadata.name);
+        const label = names.length > 0 ? `ONLINE: ${names.join(', ')}` : (conns.length > 0 ? `SALA VACÍA` : 'CONECTANDO...');
         
         status.innerText = label;
         status.style.color = names.length > 0 ? 'var(--red)' : '#444';
 
-        // Enviar lista de nombres a todos los invitados
+        // 3. Informar a todos los invitados de quién más está en la sala
         conns.forEach(c => {
             if (c.open) c.send({ type: 'NAMES', list: names });
         });
@@ -547,6 +560,14 @@
     window.copyId = () => { 
         navigator.clipboard.writeText(document.getElementById('room-id-val').innerText); 
         showToast("ID de sala copiado"); 
+    };
+
+    window.copyInviteLink = () => {
+        const id = document.getElementById('room-id-val').innerText;
+        if(id === '-------') return;
+        const link = `${window.location.origin}${window.location.pathname}?room=${id}`;
+        navigator.clipboard.writeText(link);
+        showToast("¡Link de invitación copiado!");
     };
 </script>
 </body>
