@@ -291,75 +291,94 @@
     };
 
     function attemptConnection(id, name) {
-        if(peer) peer.destroy();
-        peer = new Peer(PEER_CONFIG);
+        // Limpieza profunda antes de empezar
+        if(peer) {
+            peer.removeAllListeners();
+            peer.destroy();
+        }
+        
+        // Pequeño respiro para que el socket se libere
+        setTimeout(() => {
+            peer = new Peer(PEER_CONFIG);
 
-        peer.on('open', () => {
-            const conn = peer.connect(id, { reliable: true });
-            showMain();
-            document.getElementById('guest-back').classList.remove('hidden');
-            
-            const connTimeout = setTimeout(() => {
-                if(!conn.open) {
-                    console.log("Timeout de conexión, reintentando...");
+            peer.on('open', (myId) => {
+                console.log("Mi ID de cliente es:", myId);
+                
+                // CRUCIAL: Esperamos medio segundo antes de conectar.
+                // Esto permite que el servidor de señales de PeerJS nos registre 
+                // correctamente antes de intentar el apretón de manos con el host.
+                setTimeout(() => {
+                    if (peer.destroyed) return;
+                    
+                    const conn = peer.connect(id, { 
+                        reliable: true,
+                        connectionTimeout: 10000 // 10 segundos de margen
+                    });
+                    
+                    showMain();
+                    document.getElementById('guest-back').classList.remove('hidden');
+                    
+                    // Timeout interno de la conexión específica
+                    const connTimeout = setTimeout(() => {
+                        if(!conn.open) {
+                            console.log("La conexión no abrió a tiempo, reintentando...");
+                            handleRetry(id, name);
+                        }
+                    }, 6000);
+
+                    conn.on('open', () => {
+                        clearTimeout(connTimeout);
+                        retryCount = 0;
+                        console.log("¡Conexión establecida con éxito!");
+                        conn.send({ type: 'HELO', name: name });
+                        const status = document.getElementById('conn-status');
+                        if(status) { status.innerText = `CONECTADO COMO: ${name.toUpperCase()}`; status.style.color = 'var(--red)'; }
+                    });
+
+                    conn.on('data', d => { 
+                        // ... (resto de lógica de datos igual)
+                        if (d.type === 'NAMES') {
+                            const status = document.getElementById('conn-status');
+                            if(status) { 
+                                status.innerText = `ONLINE: ${d.list.join(', ')}`; 
+                                status.style.color = 'var(--red)'; 
+                            }
+                            return;
+                        }
+                        if (document.getElementById('sync-area').innerHTML !== d.html) {
+                            document.getElementById('sync-area').innerHTML = d.html;
+                        }
+                        if (document.getElementById('players-grid').innerHTML !== d.chips) {
+                            document.getElementById('players-grid').innerHTML = d.chips;
+                        }
+                        if(d.effect) {
+                            scrollToTarget();
+                            setTimeout(playSpotlight, 100); 
+                            sonidoMeme.currentTime = 0;
+                            sonidoMeme.volume = 1.0;
+                            sonidoMeme.play().catch(e => {
+                                document.body.onclick = () => { sonidoMeme.play(); document.body.onclick = null; };
+                            });
+                        }
+                    });
+
+                    conn.on('close', () => handleRetry(id, name));
+                    conn.on('error', (err) => {
+                        console.error('Error en la conexión:', err);
+                        handleRetry(id, name);
+                    });
+                }, 500);
+            });
+
+            peer.on('error', err => {
+                console.error('Error en el objeto Peer:', err);
+                if(err.type === 'peer-unavailable') {
+                    showToast("Sala no encontrada. Revisa el ID.", "error");
+                } else {
                     handleRetry(id, name);
                 }
-            }, 5000);
-
-            conn.on('open', () => {
-                clearTimeout(connTimeout);
-                retryCount = 0;
-                console.log("Conectado al host");
-                conn.send({ type: 'HELO', name: name });
-                const status = document.getElementById('conn-status');
-                if(status) { status.innerText = `CONECTADO COMO: ${name.toUpperCase()}`; status.style.color = 'var(--red)'; }
             });
-
-            conn.on('data', d => { 
-                if (d.type === 'NAMES') {
-                    const status = document.getElementById('conn-status');
-                    if(status) { 
-                        status.innerText = `ONLINE: ${d.list.join(', ')}`; 
-                        status.style.color = 'var(--red)'; 
-                    }
-                    return;
-                }
-                if (document.getElementById('sync-area').innerHTML !== d.html) {
-                    document.getElementById('sync-area').innerHTML = d.html;
-                }
-                if (document.getElementById('players-grid').innerHTML !== d.chips) {
-                    document.getElementById('players-grid').innerHTML = d.chips;
-                }
-                if(d.effect) {
-                    scrollToTarget();
-                    setTimeout(playSpotlight, 100); 
-                    sonidoMeme.currentTime = 0;
-                    sonidoMeme.volume = 1.0;
-                    sonidoMeme.play().catch(e => {
-                        document.body.onclick = () => { sonidoMeme.play(); document.body.onclick = null; };
-                    });
-                }
-            });
-
-            conn.on('close', () => {
-                console.log("Conexión perdida, intentando reconectar...");
-                handleRetry(id, name);
-            });
-
-            conn.on('error', (err) => {
-                console.error('Conn error:', err);
-                handleRetry(id, name);
-            });
-        });
-
-        peer.on('error', err => {
-            console.error('Peer error:', err);
-            if(err.type === 'peer-unavailable') {
-                showToast("Sala no encontrada. Revisa el ID.", "error");
-            } else {
-                handleRetry(id, name);
-            }
-        });
+        }, 100);
     }
 
     function handleRetry(id, name) {
