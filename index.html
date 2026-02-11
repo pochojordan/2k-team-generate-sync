@@ -16,20 +16,75 @@
             margin: 0; font-family: 'Inter', sans-serif; background: #000; color: white; 
             display: flex; justify-content: center; min-height: 100vh; padding: 5px; 
             background: radial-gradient(circle at top, #1a0000 0%, #000 100%);
+            background-attachment: fixed;
             overflow-x: hidden; width: 100%;
+            position: relative;
+        }
+
+        /* FOCOS REALISTAS DE PABELLÓN */
+        body::before, body::after {
+            content: ''; position: fixed; top: -100px; 
+            width: 600px; height: 150vh;
+            z-index: -1; pointer-events: none;
+            background: linear-gradient(180deg, rgba(255, 0, 0, 0.5) 0%, transparent 90%);
+            /* Forma de haz: estrecho arriba (45-55%) y ancho abajo (0-100%) */
+            clip-path: polygon(48% 0%, 52% 0%, 100% 100%, 0% 100%);
+            filter: blur(40px);
+            opacity: 0.15;
+            transform-origin: top center;
+        }
+        body::before {
+            left: 0;
+            animation: sweepSpot1 8s infinite alternate ease-in-out;
+        }
+        body::after {
+            right: 0;
+            animation: sweepSpot2 10s infinite alternate-reverse ease-in-out;
+        }
+
+        @keyframes sweepSpot1 {
+            0% { transform: rotate(-30deg); opacity: 0.1; }
+            100% { transform: rotate(-5deg); opacity: 0.25; }
+        }
+        @keyframes sweepSpot2 {
+            0% { transform: rotate(5deg); opacity: 0.1; }
+            100% { transform: rotate(30deg); opacity: 0.25; }
         }
 
         .app { width: 100%; max-width: 1000px; position: relative; }
         h1 { font-family: 'Orbitron'; color: var(--red); text-align: center; text-shadow: var(--glow); letter-spacing: 2px; margin: 10px 0; font-size: 1.4rem; }
 
-        /* FOCOS */
-        .spotlight { position: fixed; top: 0; width: 40%; height: 100%; background: linear-gradient(to right, transparent, rgba(255,255,255,0.1), #fff, rgba(255,255,255,0.1), transparent); z-index: 100; pointer-events: none; opacity: 0; filter: blur(15px); }
-        #foco-L { left: -50%; transform: skewX(-15deg); }
-        #foco-R { right: -50%; transform: skewX(15deg); }
-        .anim-L { animation: sweepL 1.2s ease-in-out; }
-        .anim-R { animation: sweepR 1.2s ease-in-out; }
-        @keyframes sweepL { 0% { left: -50%; opacity: 0; } 50% { opacity: 0.6; } 100% { left: 120%; opacity: 0; } }
-        @keyframes sweepR { 0% { right: -50%; opacity: 0; } 50% { opacity: 0.6; } 100% { right: 120%; opacity: 0; } }
+        /* FOCOS BLANCOS COMPLEMENTARIOS - OPTIMIZADOS */
+        .spotlight { 
+            position: fixed; top: -200px; 
+            width: 600px; height: 160vh;
+            z-index: -1; pointer-events: none;
+            /* Blanco más puro y potente */
+            background: linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 80%);
+            clip-path: polygon(45% 0%, 55% 0%, 100% 100%, 0% 100%);
+            filter: blur(35px);
+            transform-origin: top center;
+            opacity: 0;
+            will-change: transform, opacity;
+        }
+        
+        #foco-L { left: 15%; animation: idleWhiteL 12s infinite alternate ease-in-out; }
+        #foco-R { right: 15%; animation: idleWhiteR 15s infinite alternate-reverse ease-in-out; }
+
+        @keyframes idleWhiteL { 
+            0% { transform: rotate(-25deg) scale(0.9); opacity: 0.05; } 
+            100% { transform: rotate(5deg) scale(1.1); opacity: 0.25; } 
+        }
+        @keyframes idleWhiteR { 
+            0% { transform: rotate(25deg) scale(0.9); opacity: 0.05; } 
+            100% { transform: rotate(-5deg) scale(1.1); opacity: 0.25; } 
+        }
+
+        .anim-L { animation: sweepL 1.2s ease-in-out !important; z-index: 100 !important; }
+        .anim-R { animation: sweepR 1.2s ease-in-out !important; z-index: 100 !important; }
+        
+        @keyframes sweepL { 0% { left: -50%; opacity: 0; transform: rotate(-30deg); } 50% { opacity: 0.8; } 100% { left: 120%; opacity: 0; transform: rotate(30deg); } }
+        @keyframes sweepR { 0% { right: -50%; opacity: 0; transform: rotate(30deg); } 50% { opacity: 0.8; } 100% { right: 120%; opacity: 0; transform: rotate(-30deg); } }
 
         /* LAYOUT */
         .main-layout { display: grid; gap: 10px; grid-template-columns: 100%; width: 100%; }
@@ -180,8 +235,10 @@
     const db = firebase.database();
 
     let sel = {}, isHost = false, lastData = "", roomRef = null, myGuestRef = null;
+    let lastGuestNames = []; // Para detectar nuevos invitados
     const POS_LABELS = ["PG", "SG", "LK", "PF", "C"];
     const sonidoMeme = new Audio('oh-my-god-meme.mp3');
+    const sonidoEntrada = new Audio('soy-concha-entro.mp3');
 
     // Función de sincronización eficiente (solo se llama cuando algo cambia)
     function syncHostData(effect = false) {
@@ -214,8 +271,11 @@
             showToast("Sala cargada desde enlace.");
         }
         sonidoMeme.load();
+        sonidoEntrada.load();
         const unlock = () => {
-            sonidoMeme.play().then(() => { sonidoMeme.pause(); sonidoMeme.currentTime = 0; }).catch(e => {});
+            [sonidoMeme, sonidoEntrada].forEach(s => {
+                s.play().then(() => { s.pause(); s.currentTime = 0; }).catch(e => {});
+            });
             document.removeEventListener('click', unlock);
         };
         document.addEventListener('click', unlock);
@@ -272,6 +332,14 @@
             document.getElementById('guest-back').classList.remove('hidden');
             const statusLabel = document.getElementById('conn-status');
             if(statusLabel) statusLabel.innerText = "CONECTANDO...";
+
+            // REPRODUCIR AUDIO AL ENTRAR (SOLO AL INVITADO)
+            sonidoEntrada.currentTime = 0;
+            sonidoEntrada.play().catch(e => {
+                // Si el navegador bloquea, sonará al primer clic después de entrar
+                showToast("Haz clic en cualquier parte para activar el audio.");
+            });
+
             myGuestRef = roomRef.child('guests').push();
             myGuestRef.set({ name: name });
             myGuestRef.onDisconnect().remove();
