@@ -119,15 +119,13 @@
         <div class="main-layout">
             <div class="panel">
                 <div id="host-controls" class="hidden">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
-                        <div id="share-card" style="background:#0a0a0a; border:1px solid var(--red); border-radius:6px; padding:8px; text-align:center; cursor:pointer;" onclick="copyId()">
-                            <span style="font-size:0.55rem; color:#666; display:block; text-transform: uppercase;">ID (Copiar)</span>
-                            <div id="room-id-val" style="font-family:'Orbitron'; font-size:0.75rem;">-------</div>
-                        </div>
-                        <button class="btn-secondary" style="font-size: 0.55rem; padding: 0;" onclick="copyInviteLink()">
-                            COMPARTIR<br>ENLACE
-                        </button>
+                    <div id="share-card" style="background:#0a0a0a; border:1px solid var(--red); border-radius:6px; padding:8px; text-align:center; cursor:pointer; margin-bottom:5px;" onclick="copyId()">
+                        <span style="font-size:0.55rem; color:#666; display:block; text-transform: uppercase;">ID SALA (COPIAR)</span>
+                        <div id="room-id-val" style="font-family:'Orbitron'; font-size:0.8rem;">-------</div>
                     </div>
+                    <button class="btn-full btn-secondary" style="font-size: 0.6rem; padding: 6px; margin-bottom: 10px;" onclick="copyInviteLink()">
+                        🔗 COPIAR LINK DE INVITACIÓN
+                    </button>
                     <div class="input-group">
                         <input type="text" id="newPlayerName" placeholder="Nombre...">
                         <button onclick="addNewPlayer()">ADD</button>
