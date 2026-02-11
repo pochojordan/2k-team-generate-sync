@@ -4,7 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>2K SYNC - STADIUM ENTRANCE</title>
-    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <!-- Firebase SDK (Compat) -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@700&family=Inter:wght@400;700&display=swap');
         * { box-sizing: border-box; }
@@ -163,37 +165,38 @@
 </div>
 
 <script>
-    let peer, conns = [], sel = {}, isHost = false, lastHtml = "";
+    const firebaseConfig = {
+        apiKey: "AIzaSyCGjel1KXDgVFSYyxphSP5E2BHNdLC18KM",
+        authDomain: "team-generator-sync.firebaseapp.com",
+        databaseURL: "https://team-generator-sync-default-rtdb.europe-west1.firebasedatabase.app",
+        projectId: "team-generator-sync",
+        storageBucket: "team-generator-sync.firebasestorage.app",
+        messagingSenderId: "612505072793",
+        appId: "1:612505072793:web:1fdef2db8e980e4d693408",
+        measurementId: "G-ENBLMFF37L"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    let sel = {}, isHost = false, lastData = "", roomRef = null, myGuestRef = null;
     const POS_LABELS = ["PG", "SG", "LK", "PF", "C"];
     const sonidoMeme = new Audio('oh-my-god-meme.mp3');
 
     window.onload = () => {
         const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
         saved.forEach(name => createPlayerChip(name));
-        
-        // Cargar nombre de invitado guardado
         const savedName = localStorage.getItem('savedGuestName');
         if(savedName) document.getElementById('guestNameInput').value = savedName;
-
-        // Comprobar si viene por link de invitación
         const urlParams = new URLSearchParams(window.location.search);
         const inviteRoom = urlParams.get('room');
         if(inviteRoom) {
             document.getElementById('roomIdInput').value = inviteRoom;
             showToast("Sala cargada desde enlace.");
         }
-        
-        // Cargar audio y preparar error
         sonidoMeme.load();
-        sonidoMeme.onerror = () => showToast("Error: No se pudo cargar el sonido.", "error");
-        
-        // Intentar desbloquear en el primer clic global
         const unlock = () => {
-            sonidoMeme.play().then(() => {
-                sonidoMeme.pause();
-                sonidoMeme.currentTime = 0;
-                console.log("Audio desbloqueado");
-            }).catch(e => console.log("Audio bloqueado aún"));
+            sonidoMeme.play().then(() => { sonidoMeme.pause(); sonidoMeme.currentTime = 0; }).catch(e => {});
             document.removeEventListener('click', unlock);
         };
         document.addEventListener('click', unlock);
@@ -206,226 +209,95 @@
         t.innerHTML = `<span>${msg}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span>`;
         if(type === 'error') t.style.borderLeftColor = '#ff4444';
         container.appendChild(t);
-        setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 300); }, 4000);
+        setTimeout(() => { if(t.parentElement) { t.classList.add('out'); setTimeout(() => t.remove(), 300); } }, 4000);
     }
-
-    const PEER_CONFIG = {
-        config: {
-            'iceServers': [
-                { url: 'stun:stun.l.google.com:19302' },
-                { url: 'stun:stun1.l.google.com:19302' },
-                { url: 'stun:stun2.l.google.com:19302' },
-                { url: 'stun:stun3.l.google.com:19302' },
-                { url: 'stun:stun4.l.google.com:19302' },
-                { url: 'stun:stun.voipstunt.com' },
-                { url: 'stun:stun.ekiga.net' },
-                { url: 'stun:stun.ideasip.com' },
-                { url: 'stun:stun.schlund.de' },
-                { url: 'stun:stun.voiparound.com' },
-                { url: 'stun:stun.voipbuster.com' },
-                { url: 'stun:stun.sipgate.net:10000' },
-                { url: 'stun:stun.l.google.com:19305' }
-            ],
-            'iceCandidatePoolSize': 10
-        }
-    };
 
     window.startHost = () => {
         isHost = true;
-        peer = new Peer(PEER_CONFIG);
-        peer.on('open', id => {
-            document.getElementById('room-id-val').innerText = id;
+        const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
+        roomRef = db.ref('rooms/' + roomId);
+        roomRef.remove().then(() => {
+            document.getElementById('room-id-val').innerText = roomId;
             document.getElementById('host-controls').classList.remove('hidden');
             document.getElementById('host-actions').classList.remove('hidden');
             showMain();
-        });
-        peer.on('error', err => {
-            console.error('Peer error:', err);
-            showToast("Error en la sala: " + err.type, "error");
-        });
-        peer.on('connection', c => {
-            console.log("Nueva conexión entrante");
-            c.on('data', d => {
-                if (d.type === 'HELO') {
-                    c.metadata = { name: d.name };
-                    updateConnStatus();
-                }
+            
+            // Auto-limpieza: Borrar la sala cuando el Host se desconecta
+            roomRef.onDisconnect().remove();
+            roomRef.child('guests').on('value', snap => {
+                const guests = snap.val() || {};
+                const names = Object.values(guests).map(g => g.name);
+                updateConnStatus(names);
             });
-            c.on('close', () => { setTimeout(updateConnStatus, 500); });
-            c.on('error', () => { setTimeout(updateConnStatus, 500); });
-            conns.push(c);
-        });
-
-        // Loop de sincronización único para todos los clientes
-        setInterval(() => {
-            // Limpieza periódica de seguridad (cada 800ms) por si fallan los eventos
-            if(conns.some(c => !c.open)) updateConnStatus();
-
-            if (conns.length > 0) {
-                const currentHtml = document.getElementById('sync-area').innerHTML;
-                const currentChips = document.getElementById('players-grid').innerHTML;
-                
-                if(currentHtml + currentChips !== lastHtml || window.triggerEffect) {
-                    const data = { html: currentHtml, chips: currentChips, effect: window.triggerEffect };
-                    conns.forEach(c => { if(c.open) c.send(data); });
-                    lastHtml = currentHtml + currentChips;
+            setInterval(() => {
+                const currentGrid = document.getElementById('players-grid').innerHTML;
+                const currentSync = document.getElementById('sync-area').innerHTML;
+                const dataString = currentGrid + currentSync;
+                if(dataString !== lastData || window.triggerEffect) {
+                    roomRef.child('hostData').set({
+                        grid: currentGrid,
+                        sync: currentSync,
+                        effect: window.triggerEffect || false,
+                        ts: Date.now()
+                    });
+                    lastData = dataString;
                     window.triggerEffect = false;
                 }
-            }
-        }, 800);
+            }, 800);
+        });
     };
 
-    function updateConnStatus() {
-        const status = document.getElementById('conn-status');
-        if(!status) return;
-        
-        // 1. Limpiar la lista de conexiones cerradas/muertas
-        conns = conns.filter(c => c.open);
-        
-        // 2. Extraer nombres validos
-        const names = conns.filter(c => c.metadata && c.metadata.name).map(c => c.metadata.name);
-        const label = names.length > 0 ? `ONLINE: ${names.join(', ')}` : (conns.length > 0 ? `SALA VACÍA` : 'CONECTANDO...');
-        
-        status.innerText = label;
-        status.style.color = names.length > 0 ? 'var(--red)' : '#444';
-
-        // 3. Informar a todos los invitados de quién más está en la sala
-        conns.forEach(c => {
-            if (c.open) c.send({ type: 'NAMES', list: names });
-        });
-    }
-
-    let retryCount = 0;
-    const MAX_RETRIES = 5;
+    // Intento de borrado inmediato al cerrar la pestaña
+    window.onbeforeunload = () => {
+        if(isHost && roomRef) roomRef.remove();
+    };
 
     window.joinRoom = () => {
-        const id = document.getElementById('roomIdInput').value.trim();
+        const roomId = document.getElementById('roomIdInput').value.trim().toUpperCase();
         const name = document.getElementById('guestNameInput').value.trim();
-        
-        if(!name) return showToast("Por favor, introduce tu nombre.");
-        if(!id) return showToast("Introduce el ID de la sala.");
-        
-        // Guardar nombre para la próxima vez
+        if(!name || !roomId) return showToast("Faltan datos para entrar.");
         localStorage.setItem('savedGuestName', name);
-        
-        retryCount = 0;
-        attemptConnection(id, name);
+        roomRef = db.ref('rooms/' + roomId);
+        roomRef.once('value', snap => {
+            if(!snap.exists()) return showToast("La sala no existe.", "error");
+            showMain();
+            document.getElementById('guest-back').classList.remove('hidden');
+            const statusLabel = document.getElementById('conn-status');
+            if(statusLabel) statusLabel.innerText = "CONECTANDO...";
+            myGuestRef = roomRef.child('guests').push();
+            myGuestRef.set({ name: name });
+            myGuestRef.onDisconnect().remove();
+            roomRef.child('guests').on('value', snap => {
+                const guests = snap.val() || {};
+                const names = Object.values(guests).map(g => g.name);
+                updateConnStatus(names);
+            });
+            roomRef.child('hostData').on('value', snap => {
+                const d = snap.val();
+                if(!d) return;
+                if (document.getElementById('players-grid').innerHTML !== d.grid) {
+                    document.getElementById('players-grid').innerHTML = d.grid;
+                }
+                if (document.getElementById('sync-area').innerHTML !== d.sync) {
+                    document.getElementById('sync-area').innerHTML = d.sync;
+                }
+                if(d.effect) {
+                    scrollToTarget();
+                    setTimeout(playSpotlight, 100); 
+                    sonidoMeme.currentTime = 0;
+                    sonidoMeme.play().catch(e => {
+                        document.body.onclick = () => { sonidoMeme.play(); document.body.onclick = null; };
+                    });
+                }
+            });
+        });
     };
 
-    function attemptConnection(id, name) {
-        // Limpieza profunda antes de empezar
-        if(peer) {
-            peer.removeAllListeners();
-            peer.destroy();
-        }
-        
-        // Pequeño respiro para que el socket se libere
-        setTimeout(() => {
-            peer = new Peer(PEER_CONFIG);
-
-            const peerInitTimeout = setTimeout(() => {
-                if(!peer.open && !peer.destroyed) {
-                    console.log("El objeto Peer no abre, posible bloqueo de ISP");
-                    handleRetry(id, name, "TIMEOUT_INIT");
-                }
-            }, 8000);
-
-            peer.on('open', (myId) => {
-                clearTimeout(peerInitTimeout);
-                console.log("Mi ID de cliente es:", myId);
-                
-                // CRUCIAL: Esperamos medio segundo antes de conectar.
-                // Esto permite que el servidor de señales de PeerJS nos registre 
-                // correctamente antes de intentar el apretón de manos con el host.
-                setTimeout(() => {
-                    if (peer.destroyed) return;
-                    
-                    // Enviamos el nombre directamente en la metadata de conexion
-                    // para ahorrar pasos en el protocolo (menos riesgo de corte)
-                    const conn = peer.connect(id, { 
-                        metadata: { name: name },
-                        reliable: false // Mas rapido y menos propenso a bloqueos en movil
-                    });
-                    
-                    showMain();
-                    document.getElementById('guest-back').classList.remove('hidden');
-                    
-                    // Timeout interno de la conexión específica
-                    const connTimeout = setTimeout(() => {
-                        if(!conn.open) {
-                            console.log("La conexión no abrió a tiempo, reintentando...");
-                            handleRetry(id, name);
-                        }
-                    }, 6000);
-
-                    conn.on('open', () => {
-                        clearTimeout(connTimeout);
-                        retryCount = 0;
-                        console.log("¡Conexión establecida con éxito!");
-                        const status = document.getElementById('conn-status');
-                        if(status) { status.innerText = `CONECTADO COMO: ${name.toUpperCase()}`; status.style.color = 'var(--red)'; }
-                    });
-
-                    conn.on('data', d => { 
-                        // ... (resto de lógica de datos igual)
-                        if (d.type === 'NAMES') {
-                            const status = document.getElementById('conn-status');
-                            if(status) { 
-                                status.innerText = `ONLINE: ${d.list.join(', ')}`; 
-                                status.style.color = 'var(--red)'; 
-                            }
-                            return;
-                        }
-                        if (document.getElementById('sync-area').innerHTML !== d.html) {
-                            document.getElementById('sync-area').innerHTML = d.html;
-                        }
-                        if (document.getElementById('players-grid').innerHTML !== d.chips) {
-                            document.getElementById('players-grid').innerHTML = d.chips;
-                        }
-                        if(d.effect) {
-                            scrollToTarget();
-                            setTimeout(playSpotlight, 100); 
-                            sonidoMeme.currentTime = 0;
-                            sonidoMeme.volume = 1.0;
-                            sonidoMeme.play().catch(e => {
-                                document.body.onclick = () => { sonidoMeme.play(); document.body.onclick = null; };
-                            });
-                        }
-                    });
-
-                    conn.on('close', () => handleRetry(id, name, "CONN_CLOSED"));
-                    conn.on('error', (err) => {
-                        console.error('Error en la conexión:', err);
-                        handleRetry(id, name, err.type || "CONN_ERROR");
-                    });
-                }, 500);
-            });
-
-            peer.on('error', err => {
-                console.error('Error en el objeto Peer:', err);
-                if(err.type === 'peer-unavailable') {
-                    showToast("Sala no encontrada. Revisa el ID.", "error");
-                } else if(err.type === 'network') {
-                    showToast("Error de red: Tu operadora bloquea la conexión.", "error");
-                    handleRetry(id, name, "NETWORK_BLOCK");
-                } else {
-                    handleRetry(id, name, err.type);
-                }
-            });
-        }, 100);
-    }
-
-    function handleRetry(id, name) {
-        if (retryCount < MAX_RETRIES) {
-            retryCount++;
-            const status = document.getElementById('conn-status');
-            if(status) status.innerText = `RECONECTANDO (${retryCount}/${MAX_RETRIES})...`;
-            setTimeout(() => attemptConnection(id, name), 2500);
-        } else {
-            showToast("No se pudo conectar tras varios intentos.", "error");
-            const status = document.getElementById('conn-status');
-            if(status) status.innerText = `ERROR DE CONEXIÓN`;
-        }
+    function updateConnStatus(names) {
+        const status = document.getElementById('conn-status');
+        if(!status) return;
+        status.innerText = names.length > 0 ? `ONLINE: ${names.join(', ')}` : 'SALA VACÍA';
+        status.style.color = names.length > 0 ? 'var(--red)' : '#666';
     }
 
     function showMain() {
@@ -439,8 +311,7 @@
     }
 
     function playSpotlight() {
-        const fl = document.getElementById('foco-L');
-        const fr = document.getElementById('foco-R');
+        const fl = document.getElementById('foco-L'), fr = document.getElementById('foco-R');
         [fl, fr].forEach(f => { f.classList.remove('anim-L', 'anim-R'); void f.offsetWidth; });
         fl.classList.add('anim-L'); fr.classList.add('anim-R');
     }
@@ -450,10 +321,7 @@
         if (Object.keys(sel).length !== 5) return showToast("¡Selecciona 5 jugadores!");
         scrollToTarget();
         window.triggerEffect = true;
-        setTimeout(() => {
-            playSpotlight();
-            setTimeout(roll, 600);
-        }, 200);
+        setTimeout(() => { playSpotlight(); setTimeout(roll, 600); }, 200);
     };
 
     window.addNewPlayer = () => {
@@ -481,21 +349,19 @@
         const safeId = 'c-' + name.replace(/\s+/g, '');
         const chip = document.getElementById(safeId);
         if (sel[name]) {
-            delete sel[name]; chip.classList.remove('active');
+            delete sel[name]; if(chip) chip.classList.remove('active');
             const row = document.getElementById('r-' + safeId); if(row) row.remove();
         } else {
             if (Object.keys(sel).length >= 5) return;
-            // Cargar preferencias guardadas o todas por defecto
             const prefs = JSON.parse(localStorage.getItem('posPrefs') || '{}');
             const savedPos = prefs[name] || [0,1,2,3,4];
-            
             sel[name] = savedPos; 
-            chip.classList.add('active');
+            if(chip) chip.classList.add('active');
             const row = document.createElement('div');
             row.className = 'row'; row.id = 'r-' + safeId;
             let btns = POS_LABELS.map((p, i) => {
                 const isOn = savedPos.includes(i) ? 'on' : '';
-                return `<div class="box ${isOn}" id="b-${safeId}-${i}" onclick="togPos('${name}',${i})">${p}</div>`;
+                return `<div class="box ${isOn}" onclick="togPos('${name}',${i})">${p}</div>`;
             }).join('');
             row.innerHTML = `<div class="p-name">${name.toUpperCase()}</div><div class="btns">${btns}</div>`;
             document.getElementById('config-list').appendChild(row);
@@ -505,65 +371,50 @@
 
     window.togPos = (name, i) => {
         if(!isHost) return;
-        const safeId = 'c-' + name.replace(/\s+/g, '');
-        const btn = document.getElementById(`b-${safeId}-${i}`);
         if (sel[name].includes(i)) {
-            if (sel[name].length > 1) { sel[name] = sel[name].filter(x => x !== i); btn.classList.remove('on'); }
-        } else { sel[name].push(i); btn.classList.add('on'); }
-        
-        // Guardar preferencia en localStorage
+            if (sel[name].length > 1) sel[name] = sel[name].filter(x => x !== i);
+        } else {
+            sel[name].push(i);
+        }
         const prefs = JSON.parse(localStorage.getItem('posPrefs') || '{}');
         prefs[name] = sel[name];
         localStorage.setItem('posPrefs', JSON.stringify(prefs));
+        
+        // Refrescar solo los botones de esa fila
+        const safeId = 'c-' + name.replace(/\s+/g, '');
+        const row = document.getElementById('r-' + safeId);
+        if(row) {
+            row.querySelector('.btns').innerHTML = POS_LABELS.map((p, idx) => {
+                const isOn = sel[name].includes(idx) ? 'on' : '';
+                return `<div class="box ${isOn}" onclick="togPos('${name}',${idx})">${p}</div>`;
+            }).join('');
+        }
     };
 
     window.roll = () => {
-    const names = Object.keys(sel);
-    let res = new Array(5).fill(null);
-    let players = names.map(n => ({n, p: [...sel[n]]})).sort((a,b) => a.p.length - b.p.length);
-    
-    for (let p of players) {
-        let options = p.p.sort(() => Math.random() - 0.5);
-        let found = false;
-        for (let pos of options) { if (!res[pos]) { res[pos] = p.n; found = true; break; } }
-        if (!found) { for (let i=0; i<5; i++) if(!res[i]) { res[i] = p.n; break; } }
-    }
+        const names = Object.keys(sel);
+        let res = new Array(5).fill(null);
+        let players = names.map(n => ({n, p: [...sel[n]]})).sort((a,b) => a.p.length - b.p.length);
+        for (let p of players) {
+            let options = p.p.sort(() => Math.random() - 0.5);
+            let found = false;
+            for (let pos of options) { if (!res[pos]) { res[pos] = p.n; found = true; break; } }
+            if (!found) { for (let i=0; i<5; i++) if(!res[i]) { res[i] = p.n; break; } }
+        }
+        showRes(res);
+    };
 
-    // --- EFECTO DE SONIDO ---
-    sonidoMeme.currentTime = 0; 
-    sonidoMeme.volume = 1.0;
-    const playPromise = sonidoMeme.play();
-    if (playPromise !== undefined) {
-        playPromise.catch(e => {
-            console.log("Error de reproducción:", e);
-            // Intentar una última vez si hubo interacción
-            setTimeout(() => { sonidoMeme.play().catch(()=>{}); }, 50);
+    function showRes(res) {
+        let textResult = "🏀 *QUINTETO 2K SYNC* 🏀\n\n";
+        let html = '<div class="result">';
+        POS_LABELS.forEach((l, i) => {
+            html += `<div class="res-line" style="animation-delay: ${i*0.3}s"><span class="res-pos">${l}</span><span class="res-val">${res[i].toUpperCase()}</span></div>`;
+            textResult += `*${l}:* ${res[i].toUpperCase()}\n`;
         });
-    }
-    // ------------------------
-
-    let html = '<div class="result">';
-    let textResult = "🏀 *QUINTETO 2K SYNC* 🏀\n\n";
-    POS_LABELS.forEach((l, i) => {
-        const delay = i * 0.3; 
-        html += `<div class="res-line" style="animation-delay: ${delay}s">
-                    <span class="res-pos">${l}</span>
-                    <span class="res-val">${res[i].toUpperCase()}</span>
-                 </div>`;
-        textResult += `*${l}:* ${res[i].toUpperCase()}\n`;
-    });
-    
-    // Guardar para copiar después
-    window.lastResultText = textResult;
-
-    const copyBtn = `<div class="res-actions">
-                        <button class="btn-copy" onclick="copyToWhatsApp()">
-                            COPIAR PARA WHATSAPP
-                        </button>
-                     </div>`;
-
-    document.getElementById('final-result').innerHTML = html + copyBtn + '</div>';
-};
+        window.lastResultText = textResult;
+        html += `<div class="res-actions"><button class="btn-copy" onclick="copyToWhatsApp()">COPIAR PARA WHATSAPP</button></div></div>`;
+        document.getElementById('final-result').innerHTML = html;
+    };
 
     window.copyToWhatsApp = () => {
         if(!window.lastResultText) return;
@@ -575,7 +426,7 @@
         if(!isHost) return;
         sel = {}; document.getElementById('config-list').innerHTML = '';
         document.getElementById('final-result').innerHTML = '<div class="skeleton">ESPERANDO SORTEO...</div>';
-        document.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+        document.querySelectorAll('.chip.active').forEach(c => c.classList.remove('active'));
     };
 
     window.copyId = () => { 
