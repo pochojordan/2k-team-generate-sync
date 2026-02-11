@@ -226,8 +226,7 @@
                 { url: 'stun:stun.sipgate.net:10000' },
                 { url: 'stun:stun.l.google.com:19305' }
             ],
-            'iceCandidatePoolSize': 10, // Recolección más rápida/agresiva
-            'sdpSemantics': 'unified-plan'
+            'iceCandidatePoolSize': 10
         }
     };
 
@@ -324,7 +323,15 @@
         setTimeout(() => {
             peer = new Peer(PEER_CONFIG);
 
+            const peerInitTimeout = setTimeout(() => {
+                if(!peer.open && !peer.destroyed) {
+                    console.log("El objeto Peer no abre, posible bloqueo de ISP");
+                    handleRetry(id, name, "TIMEOUT_INIT");
+                }
+            }, 8000);
+
             peer.on('open', (myId) => {
+                clearTimeout(peerInitTimeout);
                 console.log("Mi ID de cliente es:", myId);
                 
                 // CRUCIAL: Esperamos medio segundo antes de conectar.
@@ -333,9 +340,11 @@
                 setTimeout(() => {
                     if (peer.destroyed) return;
                     
+                    // Enviamos el nombre directamente en la metadata de conexion
+                    // para ahorrar pasos en el protocolo (menos riesgo de corte)
                     const conn = peer.connect(id, { 
-                        reliable: true,
-                        connectionTimeout: 10000 // 10 segundos de margen
+                        metadata: { name: name },
+                        reliable: false // Mas rapido y menos propenso a bloqueos en movil
                     });
                     
                     showMain();
@@ -353,7 +362,6 @@
                         clearTimeout(connTimeout);
                         retryCount = 0;
                         console.log("¡Conexión establecida con éxito!");
-                        conn.send({ type: 'HELO', name: name });
                         const status = document.getElementById('conn-status');
                         if(status) { status.innerText = `CONECTADO COMO: ${name.toUpperCase()}`; status.style.color = 'var(--red)'; }
                     });
@@ -385,10 +393,10 @@
                         }
                     });
 
-                    conn.on('close', () => handleRetry(id, name));
+                    conn.on('close', () => handleRetry(id, name, "CONN_CLOSED"));
                     conn.on('error', (err) => {
                         console.error('Error en la conexión:', err);
-                        handleRetry(id, name);
+                        handleRetry(id, name, err.type || "CONN_ERROR");
                     });
                 }, 500);
             });
@@ -398,10 +406,10 @@
                 if(err.type === 'peer-unavailable') {
                     showToast("Sala no encontrada. Revisa el ID.", "error");
                 } else if(err.type === 'network') {
-                    showToast("Error de red: Tu operadora o firewall bloquea la conexión.", "error");
-                    handleRetry(id, name);
+                    showToast("Error de red: Tu operadora bloquea la conexión.", "error");
+                    handleRetry(id, name, "NETWORK_BLOCK");
                 } else {
-                    handleRetry(id, name);
+                    handleRetry(id, name, err.type);
                 }
             });
         }, 100);
@@ -412,7 +420,7 @@
             retryCount++;
             const status = document.getElementById('conn-status');
             if(status) status.innerText = `RECONECTANDO (${retryCount}/${MAX_RETRIES})...`;
-            setTimeout(() => attemptConnection(id, name), 2000);
+            setTimeout(() => attemptConnection(id, name), 2500);
         } else {
             showToast("No se pudo conectar tras varios intentos.", "error");
             const status = document.getElementById('conn-status');
