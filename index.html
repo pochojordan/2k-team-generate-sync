@@ -476,46 +476,40 @@
     window.roll = () => {
         const names = Object.keys(sel);
         if (names.length !== 5) return;
-        let res = new Array(5).fill(null);
-        
-        // Contar cuántos jugadores han solicitado cada posición (para detectar posiciones "raras")
-        const posRequests = new Array(5).fill(0);
-        names.forEach(n => sel[n].forEach(pIdx => posRequests[pIdx]++));
 
-        // Ordenar jugadores: primero los que tienen menos opciones (restricción máxima)
-        let players = names.map(n => ({
-            n, 
-            p: [...sel[n]]
-        })).sort((a,b) => a.p.length - b.p.length);
+        const players = names.map(n => ({ name: n, prefs: sel[n] }));
+        let solutions = [];
+        let maxMatches = -1;
 
-        for (let player of players) {
-            // Para cada jugador, ordenar sus posiciones preferidas por "rareza" global.
-            // Esto evita que un jugador con varias opciones "robe" una posición muy demandada
-            // si tiene disponible una posición que solo él (o pocos más) puede jugar (como el C).
-            let options = player.p.sort((a, b) => {
-                if (posRequests[a] !== posRequests[b]) return posRequests[a] - posRequests[b];
-                return Math.random() - 0.5;
-            });
-
-            let found = false;
-            for (let pos of options) { 
-                if (!res[pos]) { 
-                    res[pos] = player.n; 
-                    found = true; 
-                    break; 
-                } 
+        // Probamos todas las permutaciones posibles (solo hay 120)
+        // para encontrar las que maximicen el cumplimiento de preferencias
+        function permute(pIdx, currentAssign, matches) {
+            if (pIdx === 5) {
+                if (matches > maxMatches) {
+                    maxMatches = matches;
+                    solutions = [[...currentAssign]];
+                } else if (matches === maxMatches) {
+                    solutions.push([...currentAssign]);
+                }
+                return;
             }
-            if (!found) { 
-                // Si no hay ninguna de sus preferidas libres, se le asigna la primera que quede
-                for (let i=0; i<5; i++) {
-                    if(!res[i]) { 
-                        res[i] = player.n; 
-                        break; 
-                    } 
+
+            for (let pos = 0; pos < 5; pos++) {
+                if (currentAssign[pos] === null) {
+                    currentAssign[pos] = players[pIdx].name;
+                    const isPreferred = players[pIdx].prefs.includes(pos);
+                    permute(pIdx + 1, currentAssign, matches + (isPreferred ? 1 : 0));
+                    currentAssign[pos] = null; // Backtrack
                 }
             }
         }
-        showRes(res);
+
+        permute(0, new Array(5).fill(null), 0);
+        
+        // De todas las mejores soluciones encontradas, elegimos una al azar
+        const bestResult = solutions[Math.floor(Math.random() * solutions.length)];
+        
+        showRes(bestResult);
         syncHostData();
     };
 
