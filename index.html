@@ -475,13 +475,45 @@
 
     window.roll = () => {
         const names = Object.keys(sel);
+        if (names.length !== 5) return;
         let res = new Array(5).fill(null);
-        let players = names.map(n => ({n, p: [...sel[n]]})).sort((a,b) => a.p.length - b.p.length);
-        for (let p of players) {
-            let options = p.p.sort(() => Math.random() - 0.5);
+        
+        // Contar cuántos jugadores han solicitado cada posición (para detectar posiciones "raras")
+        const posRequests = new Array(5).fill(0);
+        names.forEach(n => sel[n].forEach(pIdx => posRequests[pIdx]++));
+
+        // Ordenar jugadores: primero los que tienen menos opciones (restricción máxima)
+        let players = names.map(n => ({
+            n, 
+            p: [...sel[n]]
+        })).sort((a,b) => a.p.length - b.p.length);
+
+        for (let player of players) {
+            // Para cada jugador, ordenar sus posiciones preferidas por "rareza" global.
+            // Esto evita que un jugador con varias opciones "robe" una posición muy demandada
+            // si tiene disponible una posición que solo él (o pocos más) puede jugar (como el C).
+            let options = player.p.sort((a, b) => {
+                if (posRequests[a] !== posRequests[b]) return posRequests[a] - posRequests[b];
+                return Math.random() - 0.5;
+            });
+
             let found = false;
-            for (let pos of options) { if (!res[pos]) { res[pos] = p.n; found = true; break; } }
-            if (!found) { for (let i=0; i<5; i++) if(!res[i]) { res[i] = p.n; break; } }
+            for (let pos of options) { 
+                if (!res[pos]) { 
+                    res[pos] = player.n; 
+                    found = true; 
+                    break; 
+                } 
+            }
+            if (!found) { 
+                // Si no hay ninguna de sus preferidas libres, se le asigna la primera que quede
+                for (let i=0; i<5; i++) {
+                    if(!res[i]) { 
+                        res[i] = player.n; 
+                        break; 
+                    } 
+                }
+            }
         }
         showRes(res);
         syncHostData();
