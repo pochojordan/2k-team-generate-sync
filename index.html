@@ -92,8 +92,11 @@
         .panel { background: rgba(10, 10, 10, 0.95); border: 1px solid rgba(255,0,0,0.2); border-radius: 10px; padding: 12px; width: 100%; }
 
         .grid { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 4px !important; margin-bottom: 12px; }
-        .chip { background: #111; border: 1px solid #333; padding: 10px 2px; border-radius: 6px; font-size: 0.6rem; font-weight: 700; color: #999; text-align: center; cursor: pointer; }
+        .chip { position: relative; background: #111; border: 1px solid #333; padding: 10px 2px; border-radius: 6px; font-size: 0.6rem; font-weight: 700; color: #999; text-align: center; cursor: pointer; }
         .chip.active { border-color: var(--red); color: white; box-shadow: var(--glow); background: rgba(255,0,0,0.1); }
+        .chip-del { position: absolute; top: -5px; right: -5px; width: 16px; height: 16px; background: #333; color: white; border-radius: 50%; font-size: 10px; line-height: 16px; border: 1px solid #444; display: none; }
+        .is-host .chip:hover .chip-del { display: block; }
+        .chip-del:hover { background: var(--red); border-color: var(--red); }
 
         .row { display: flex !important; align-items: center; justify-content: space-between; background: #080808; padding: 6px 10px; border-radius: 8px; border: 1px solid #1a1a1a; margin-bottom: 6px; }
         .p-name { font-weight: 700; font-size: 0.65rem; width: 60px; color: #eee; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -260,8 +263,13 @@
     }
 
     window.onload = () => {
-        const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
-        saved.forEach(name => createPlayerChip(name));
+        try {
+            const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
+            saved.forEach(name => {
+                if (name && typeof name === 'string') createPlayerChip(name, true);
+            });
+        } catch(e) { console.error("Error cargando jugadores adicionales", e); }
+        
         const savedName = localStorage.getItem('savedGuestName');
         if(savedName) document.getElementById('guestNameInput').value = savedName;
         const urlParams = new URLSearchParams(window.location.search);
@@ -296,6 +304,7 @@
         const roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
         roomRef = db.ref('rooms/' + roomId);
         roomRef.remove().then(() => {
+            document.body.classList.add('is-host');
             document.getElementById('room-id-val').innerText = roomId;
             document.getElementById('host-controls').classList.remove('hidden');
             document.getElementById('host-actions').classList.remove('hidden');
@@ -407,7 +416,7 @@
     window.addNewPlayer = () => {
         if(!isHost) return;
         const name = document.getElementById('newPlayerName').value.trim();
-        if(!name || !createPlayerChip(name)) return;
+        if(!name || !createPlayerChip(name, true)) return;
         const saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
         saved.push(name);
         localStorage.setItem('extraPlayers', JSON.stringify(saved));
@@ -415,27 +424,76 @@
         syncHostData();
     };
 
-    function createPlayerChip(name) {
+    window.removePlayer = (name) => {
+        if(!isHost || !name) return;
+        const safeId = 'c-' + name.replace(/\s+/g, '');
+        const chip = document.getElementById(safeId);
+        if(chip) chip.remove();
+        
+        // Si estaba seleccionado, quitarlo
+        if (sel && sel[name]) {
+            delete sel[name];
+            const row = document.getElementById('r-' + safeId);
+            if(row) row.remove();
+            const resultArea = document.getElementById('final-result');
+            if(resultArea) resultArea.innerHTML = '<div class="skeleton">ESPERANDO SORTEO...</div>';
+        }
+
+        // Quitar de localStorage con seguridad
+        try {
+            let saved = JSON.parse(localStorage.getItem('extraPlayers') || '[]');
+            saved = saved.filter(p => p !== name);
+            localStorage.setItem('extraPlayers', JSON.stringify(saved));
+
+            let prefs = JSON.parse(localStorage.getItem('posPrefs') || '{}');
+            if(prefs[name]) {
+                delete prefs[name];
+                localStorage.setItem('posPrefs', JSON.stringify(prefs));
+            }
+        } catch(e) { console.error("Error al actualizar localStorage", e); }
+        
+        syncHostData();
+        showToast(`Jugador ${name} eliminado.`);
+    };
+
+    function createPlayerChip(name, isExtra = false) {
         const safeId = 'c-' + name.replace(/\s+/g, '');
         if(document.getElementById(safeId)) return false;
         const chip = document.createElement('div');
         chip.className = 'chip'; chip.id = safeId; chip.innerText = name.toUpperCase();
         chip.onclick = () => togP(name);
+        
+        if(isExtra) {
+            const del = document.createElement('div');
+            del.className = 'chip-del';
+            del.innerText = '×';
+            del.onclick = (e) => {
+                e.stopPropagation();
+                removePlayer(name);
+            };
+            chip.appendChild(del);
+        }
+        
         document.getElementById('players-grid').appendChild(chip);
         return true;
     }
 
     window.togP = (name) => {
-        if(!isHost) return;
+        if(!isHost || !name) return;
         const safeId = 'c-' + name.replace(/\s+/g, '');
         const chip = document.getElementById(safeId);
+        
         if (sel[name]) {
             delete sel[name]; if(chip) chip.classList.remove('active');
             const row = document.getElementById('r-' + safeId); if(row) row.remove();
         } else {
             if (Object.keys(sel).length >= 5) return;
-            const prefs = JSON.parse(localStorage.getItem('posPrefs') || '{}');
-            const savedPos = prefs[name] || [0,1,2,3,4];
+            let savedPos = [0,1,2,3,4];
+            try {
+                const prefs = JSON.parse(localStorage.getItem('posPrefs') || '{}');
+                savedPos = prefs[name] || [0,1,2,3,4];
+            } catch(e) {}
+            
             sel[name] = savedPos; 
             if(chip) chip.classList.add('active');
             const row = document.createElement('div');
