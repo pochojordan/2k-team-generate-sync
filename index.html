@@ -66,6 +66,9 @@
             transform-origin: top center;
             opacity: 0;
             will-change: transform, opacity;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            transform: translateZ(0);
         }
         
         #foco-L { left: 15%; animation: idleWhiteL 12s infinite alternate ease-in-out; }
@@ -238,7 +241,8 @@
     const db = firebase.database();
 
     let sel = {}, isHost = false, lastData = "", roomRef = null, myGuestRef = null;
-    let lastGuestNames = []; // Para detectar nuevos invitados
+    let lastProcessedTs = 0, lastEffectTs = 0;
+    let syncTimeout = null;
     const POS_LABELS = ["PG", "SG", "LK", "PF", "C"];
     const sonidoMeme = new Audio('oh-my-god-meme.mp3');
     const sonidoEntrada = new Audio('soy-concha-entro.mp3');
@@ -250,15 +254,21 @@
         const currentSync = document.getElementById('sync-area').innerHTML;
         const dataString = currentGrid + currentSync;
 
-        // Evitar escrituras redundantes
+        // Evitar escrituras redundantes y debouncing para mejorar rendimiento
         if (dataString !== lastData || effect) {
-            roomRef.child('hostData').set({
-                grid: currentGrid,
-                sync: currentSync,
-                effect: effect,
-                ts: Date.now()
-            });
-            lastData = dataString;
+            clearTimeout(syncTimeout);
+            const performSync = () => {
+                roomRef.child('hostData').set({
+                    grid: currentGrid,
+                    sync: currentSync,
+                    effect: effect,
+                    ts: Date.now()
+                });
+                lastData = dataString;
+            };
+            
+            if (effect) performSync(); // Inmediato para efectos
+            else syncTimeout = setTimeout(performSync, 100); // Pequeño delay para cambios de estado (chips)
         }
     }
 
@@ -359,17 +369,14 @@
             });
             roomRef.child('hostData').on('value', snap => {
                 const d = snap.val();
-                if(!d) return;
-                let changed = false;
-                if (document.getElementById('players-grid').innerHTML !== d.grid) {
-                    document.getElementById('players-grid').innerHTML = d.grid;
-                    changed = true;
-                }
-                if (document.getElementById('sync-area').innerHTML !== d.sync) {
-                    document.getElementById('sync-area').innerHTML = d.sync;
-                    changed = true;
-                }
-                if(d.effect) {
+                if(!d || d.ts <= lastProcessedTs) return;
+                lastProcessedTs = d.ts;
+                
+                document.getElementById('players-grid').innerHTML = d.grid;
+                document.getElementById('sync-area').innerHTML = d.sync;
+                
+                if(d.effect && d.ts > lastEffectTs) {
+                    lastEffectTs = d.ts;
                     scrollToTarget();
                     setTimeout(playSpotlight, 100); 
                     sonidoMeme.currentTime = 0;
