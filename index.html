@@ -414,6 +414,7 @@
     window.preRoll = () => {
         if(!isHost) return;
         if (Object.keys(sel).length !== 5) return showToast("¡Selecciona 5 jugadores!");
+        if (computeLineup().maxMatches < 5) return showToast(buildConflictMessage(), "error");
         scrollToTarget();
         // Sincronizar con bandera de efecto true
         syncHostData(true);
@@ -538,22 +539,22 @@
         syncHostData();
     };
 
-    window.roll = () => {
+    function computeLineup() {
         const names = Object.keys(sel);
-        if (names.length !== 5) return;
-
         const players = names.map(n => ({ name: n, prefs: sel[n] }));
         let solutions = [];
         let maxMatches = -1;
+        let bestWeight = -1;
 
         // Probamos todas las permutaciones posibles (solo hay 120)
         // para encontrar las que maximicen el cumplimiento de preferencias
-        function permute(pIdx, currentAssign, matches) {
+        function permute(pIdx, currentAssign, matches, weight) {
             if (pIdx === 5) {
-                if (matches > maxMatches) {
+                if (matches > maxMatches || (matches === maxMatches && weight > bestWeight)) {
                     maxMatches = matches;
+                    bestWeight = weight;
                     solutions = [[...currentAssign]];
-                } else if (matches === maxMatches) {
+                } else if (matches === maxMatches && weight === bestWeight) {
                     solutions.push([...currentAssign]);
                 }
                 return;
@@ -563,14 +564,39 @@
                 if (currentAssign[pos] === null) {
                     currentAssign[pos] = players[pIdx].name;
                     const isPreferred = players[pIdx].prefs.includes(pos);
-                    permute(pIdx + 1, currentAssign, matches + (isPreferred ? 1 : 0));
+                    // Ante empate, prioriza a quien tiene menos posiciones disponibles
+                    const playerWeight = isPreferred ? 6 - Math.min(players[pIdx].prefs.length, 5) : 0;
+                    permute(pIdx + 1, currentAssign, matches + (isPreferred ? 1 : 0), weight + playerWeight);
                     currentAssign[pos] = null; // Backtrack
                 }
             }
         }
 
-        permute(0, new Array(5).fill(null), 0);
-        
+        permute(0, new Array(5).fill(null), 0, 0);
+        return { maxMatches, solutions };
+    }
+
+    function buildConflictMessage() {
+        const byPos = {};
+        Object.keys(sel).forEach(name => {
+            const prefs = sel[name];
+            if (prefs.length === 1) (byPos[prefs[0]] = byPos[prefs[0]] || []).push(name);
+        });
+        const conflicts = Object.keys(byPos).filter(p => byPos[p].length > 1);
+        if (conflicts.length) {
+            const detail = conflicts.map(p => `${POS_LABELS[p]}: ${byPos[p].join(', ')}`).join(' · ');
+            return `No se puede generar el quinteto. Solo pueden jugar ${detail}. Cambia la posición de uno.`;
+        }
+        return "No se puede generar el quinteto: ninguna combinación cubre todas las posiciones. Ajusta las preferencias.";
+    }
+
+    window.roll = () => {
+        const names = Object.keys(sel);
+        if (names.length !== 5) return;
+
+        const { maxMatches, solutions } = computeLineup();
+        if (maxMatches < 5) return showToast(buildConflictMessage(), "error");
+
         // De todas las mejores soluciones encontradas, elegimos una al azar
         const bestResult = solutions[Math.floor(Math.random() * solutions.length)];
         
